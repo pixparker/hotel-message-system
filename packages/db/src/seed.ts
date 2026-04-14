@@ -27,7 +27,11 @@ const [org] = await db
   .values({ name: ORG_NAME, defaultLanguage: "en" })
   .returning();
 
-await db.insert(settings).values({ orgId: org!.id, waProvider: "mock" });
+await db.insert(settings).values({
+  orgId: org!.id,
+  waProvider: "mock",
+  brandPrimaryColor: "#14a77a",
+});
 
 const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
 const [admin] = await db

@@ -23,6 +23,8 @@ export const settingsRoutes = new Hono()
     if (body.waProvider) patch.waProvider = body.waProvider;
     if (body.waConfig) patch.waConfig = body.waConfig;
     if (body.defaultTestPhone) patch.defaultTestPhone = normalizePhone(body.defaultTestPhone);
+    if (body.brandPrimaryColor !== undefined)
+      patch.brandPrimaryColor = body.brandPrimaryColor ?? null;
     const [row] = await db
       .update(settings)
       .set(patch)

@@ -9,8 +9,6 @@
 const LS_KEY = "hms-demo-state-v1";
 const TOKEN = "demo-access-token";
 
-type Language = "en" | "tr" | "fa" | "ar";
-
 interface User {
   id: string;
   email: string;
@@ -81,6 +79,7 @@ interface Settings {
   orgId: string;
   waProvider: "mock" | "cloud" | "baileys";
   defaultTestPhone: string | null;
+  brandPrimaryColor: string | null;
 }
 
 interface State {
@@ -352,7 +351,12 @@ function seed(): State {
     templates,
     campaigns: campaignsList,
     messages: messagesList,
-    settings: { orgId: ORG_ID, waProvider: "mock", defaultTestPhone: "+905551112233" },
+    settings: {
+      orgId: ORG_ID,
+      waProvider: "mock",
+      defaultTestPhone: "+905551112233",
+      brandPrimaryColor: "#14a77a",
+    },
   };
 }
 
@@ -751,6 +755,10 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
     if (body.waProvider) state.settings.waProvider = body.waProvider as Settings["waProvider"];
     if (body.defaultTestPhone !== undefined)
       state.settings.defaultTestPhone = String(body.defaultTestPhone);
+    if (body.brandPrimaryColor !== undefined) {
+      const v = body.brandPrimaryColor as string | null;
+      state.settings.brandPrimaryColor = v && typeof v === "string" ? v : null;
+    }
     persist();
     return json(state.settings);
   }

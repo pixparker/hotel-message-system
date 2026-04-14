@@ -162,6 +162,7 @@ export const settings = pgTable("settings", {
   waProvider: waProvider("wa_provider").notNull().default("mock"),
   waConfig: jsonb("wa_config").$type<Record<string, unknown>>().notNull().default({}),
   defaultTestPhone: text("default_test_phone"),
+  brandPrimaryColor: text("brand_primary_color"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

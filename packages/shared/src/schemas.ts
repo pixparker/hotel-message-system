@@ -59,10 +59,16 @@ export const testMessageSchema = z.object({
   language: languageSchema,
 });
 
+export const hexColorSchema = z
+  .string()
+  .regex(/^#?[0-9a-fA-F]{6}$/, "Expected a 6-digit hex color, e.g. #14a77a")
+  .transform((v) => (v.startsWith("#") ? v.toLowerCase() : `#${v.toLowerCase()}`));
+
 export const settingsUpdateSchema = z.object({
   waProvider: z.enum(["mock", "cloud", "baileys"]).optional(),
   waConfig: z.record(z.unknown()).optional(),
   defaultTestPhone: phoneSchema.optional(),
+  brandPrimaryColor: hexColorSchema.nullable().optional(),
 });
 
 export const userUpdateSchema = z.object({

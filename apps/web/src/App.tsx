@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./state/auth.js";
 import { AppShell } from "./components/AppShell.js";
 import { DemoBanner } from "./components/DemoBanner.js";
+import { BrandSync } from "./components/BrandSync.js";
 import { LoginPage } from "./routes/login.js";
 import { DashboardPage } from "./routes/dashboard.js";
 import { GuestsPage } from "./routes/guests.js";
@@ -22,6 +23,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <div className="flex flex-col h-full">
+      <BrandSync />
       <DemoBanner />
       <div className="flex-1 min-h-0 flex flex-col">
         <Routes>

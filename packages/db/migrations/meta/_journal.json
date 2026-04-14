@@ -15,6 +15,13 @@
       "when": 1776158042912,
       "tag": "0001_keen_radioactive_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776178950447,
+      "tag": "0002_flippant_gladiator",
+      "breakpoints": true
     }
   ]
 }
