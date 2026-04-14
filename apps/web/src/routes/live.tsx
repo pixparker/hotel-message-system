@@ -40,7 +40,7 @@ export function LivePage() {
       <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard icon={Send} label="Sent" value={totals.sent} tone="slate" />
         <StatCard icon={CheckCircle2} label="Delivered" value={totals.delivered} tone="brand" />
-        <StatCard icon={Eye} label="Seen" value={totals.seen} tone="emerald" />
+        <StatCard icon={Eye} label="Read" value={totals.seen} tone="emerald" />
         <StatCard
           icon={AlertTriangle}
           label="Failed"

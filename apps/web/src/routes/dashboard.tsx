@@ -75,7 +75,7 @@ export function DashboardPage() {
         <StatCard
           label="Read rate · 7d"
           value={`${readRate}%`}
-          hint={`${stats?.campaigns.last7dSeen ?? 0} of ${stats?.campaigns.last7dSent ?? 0} seen`}
+          hint={`${stats?.campaigns.last7dSeen ?? 0} of ${stats?.campaigns.last7dSent ?? 0} read`}
           icon={Eye}
           tone="emerald"
           progress={readRate}
@@ -83,7 +83,7 @@ export function DashboardPage() {
         <StatCard
           label="Avg time to read"
           value={avgReadMin !== null ? `${avgReadMin} min` : "—"}
-          hint="From sent → seen on WhatsApp"
+          hint="From sent → read on WhatsApp"
           icon={Timer}
           tone="amber"
         />
@@ -266,7 +266,7 @@ function RecentCampaignsCard({
                       />
                     </div>
                     <div className="mt-1 text-xs text-slate-500 tabular-nums">
-                      {c.seen}/{c.queued} seen · {pct}%
+                      {c.seen}/{c.queued} read · {pct}%
                     </div>
                   </div>
                   <span

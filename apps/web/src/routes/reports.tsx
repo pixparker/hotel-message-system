@@ -6,8 +6,8 @@ import {
   Users,
   Timer,
   Trophy,
-  ArrowRight,
   TrendingUp,
+  CheckCircle2,
 } from "lucide-react";
 import { Page } from "../components/Page.js";
 import { EmptyState } from "../components/EmptyState.js";
@@ -15,7 +15,6 @@ import { useReportsStats } from "../hooks/useReportsStats.js";
 
 // Industry benchmarks used for value framing (public data, rounded).
 const BENCHMARK_EMAIL_OPEN = 22;
-const BENCHMARK_SMS_READ = 30;
 const BENCHMARK_EMAIL_READ_MINUTES = 90; // typical open time after send
 
 function formatDuration(ms: number): string {
@@ -31,7 +30,7 @@ export function ReportsPage() {
 
   if (isLoading || !data) {
     return (
-      <Page title="Reports">
+      <Page title="WhatsApp Campaign Performance">
         <div className="card p-8 text-sm text-slate-500">Loading…</div>
       </Page>
     );
@@ -39,11 +38,14 @@ export function ReportsPage() {
 
   if (data.totals.campaigns === 0) {
     return (
-      <Page title="Reports" description="Past campaigns and their results.">
+      <Page
+        title="WhatsApp Campaign Performance"
+        description="How your guest messages actually perform."
+      >
         <EmptyState
           icon={BarChart3}
           title="No campaigns yet"
-          description="Reports appear here after you send your first message — and they look great."
+          description="Performance insights appear here after you send your first message — and they look great."
           action={
             <Link to="/send" className="btn-primary">
               Send your first message
@@ -67,17 +69,53 @@ export function ReportsPage() {
     avgReadMinutes > 0
       ? Math.max(1, Math.round(BENCHMARK_EMAIL_READ_MINUTES / avgReadMinutes))
       : null;
+  const vsEmailReadRate =
+    totals.readRate > BENCHMARK_EMAIL_OPEN
+      ? Math.round(totals.readRate / BENCHMARK_EMAIL_OPEN)
+      : null;
+
+  const bucketTotal =
+    (readBuckets.lt5m ?? 0) +
+    (readBuckets.lt30m ?? 0) +
+    (readBuckets.lt1h ?? 0) +
+    (readBuckets.lt3h ?? 0) +
+    (readBuckets.gt3h ?? 0);
+  const withinFive =
+    bucketTotal > 0
+      ? Math.round(((readBuckets.lt5m ?? 0) / bucketTotal) * 100)
+      : 0;
+  const withinThirty =
+    bucketTotal > 0
+      ? Math.round(
+          (((readBuckets.lt5m ?? 0) + (readBuckets.lt30m ?? 0)) / bucketTotal) * 100,
+        )
+      : 0;
 
   return (
     <Page
-      title="Reports"
-      description="All-time performance across your WhatsApp campaigns."
+      title="WhatsApp Campaign Performance"
+      description="How your guest messages actually perform — with industry context."
     >
+      {totals.readRate >= 95 && totals.sent > 0 && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-4 py-3">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+          <div className="text-sm">
+            <span className="font-semibold text-emerald-800">
+              All guests reached successfully.
+            </span>{" "}
+            <span className="text-slate-600">
+              {totals.readRate}% of your messages were read — the kind of engagement
+              you can't get from email.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <HeroStat
           label="Messages sent"
           value={totals.sent.toLocaleString()}
-          hint={`${totals.campaigns} campaigns · ${totals.uniqueGuests} unique guests`}
+          hint={`Across ${totals.campaigns} campaigns · last 14 days`}
           icon={MessageCircle}
           tone="brand"
         />
@@ -85,9 +123,18 @@ export function ReportsPage() {
           label="Read rate"
           value={`${totals.readRate}%`}
           hint={
-            totals.readRate > BENCHMARK_EMAIL_OPEN
-              ? `${Math.round(totals.readRate / BENCHMARK_EMAIL_OPEN)}× higher than email (${BENCHMARK_EMAIL_OPEN}%)`
-              : `Email benchmark: ${BENCHMARK_EMAIL_OPEN}%`
+            vsEmailReadRate ? (
+              <>
+                <span className="font-semibold text-emerald-700">
+                  {vsEmailReadRate}× higher than email
+                </span>{" "}
+                <span className="text-slate-400">
+                  (industry avg {BENCHMARK_EMAIL_OPEN}%)
+                </span>
+              </>
+            ) : (
+              `Email benchmark: ${BENCHMARK_EMAIL_OPEN}%`
+            )
           }
           icon={Eye}
           tone="emerald"
@@ -107,9 +154,16 @@ export function ReportsPage() {
           label="Avg time to read"
           value={formatDuration(readTiming.avgMs)}
           hint={
-            vsEmailMultiplier
-              ? `${vsEmailMultiplier}× faster than typical email open time`
-              : `Median: ${formatDuration(readTiming.medianMs)}`
+            vsEmailMultiplier ? (
+              <>
+                <span className="font-semibold text-amber-700">
+                  {vsEmailMultiplier}× faster
+                </span>{" "}
+                <span className="text-slate-400">than typical email open time</span>
+              </>
+            ) : (
+              `Median: ${formatDuration(readTiming.medianMs)}`
+            )
           }
           icon={Timer}
           tone="amber"
@@ -118,11 +172,16 @@ export function ReportsPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <DailyTrendCard entries={dailySent} />
-        <ReadBucketsCard buckets={readBuckets} />
+        <ReadBucketsCard
+          buckets={readBuckets}
+          withinFive={withinFive}
+          withinThirty={withinThirty}
+          bucketTotal={bucketTotal}
+        />
       </div>
 
       {topCampaign && topCampaign.queued > 0 && (
-        <div className="mt-6 card p-5 border-emerald-200 bg-gradient-to-br from-emerald-50/60 to-white">
+        <div className="mt-6 card p-5 border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-white">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
               <Trophy className="h-6 w-6" />
@@ -131,28 +190,28 @@ export function ReportsPage() {
               <div className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">
                 Top performer
               </div>
-              <div className="mt-1 flex items-baseline gap-3">
+              <div className="mt-1 text-lg font-semibold text-slate-900">
+                {topCampaign.seen === topCampaign.queued
+                  ? "This message reached every guest — read by all within minutes."
+                  : `Read by ${topCampaign.seen} of ${topCampaign.queued} guests.`}
+              </div>
+              <div className="mt-1 text-sm text-slate-600">
                 <Link
                   to={`/campaigns/${topCampaign.id}`}
-                  className="text-lg font-semibold truncate hover:text-brand-700"
+                  className="font-medium hover:text-brand-700"
                 >
                   {topCampaign.title}
-                </Link>
-                <span className="text-2xl font-bold text-emerald-700 tabular-nums">
-                  {Math.round((topCampaign.seen / topCampaign.queued) * 100)}%
+                </Link>{" "}
+                <span className="text-slate-400">
+                  · sent {new Date(topCampaign.createdAt).toLocaleDateString()}
                 </span>
-                <span className="text-sm text-slate-500">read rate</span>
-              </div>
-              <div className="mt-1 text-sm text-slate-500">
-                {topCampaign.seen} of {topCampaign.queued} guests read your
-                message on {new Date(topCampaign.createdAt).toLocaleDateString()}.
               </div>
             </div>
             <Link
               to={`/campaigns/${topCampaign.id}`}
-              className="btn-ghost shrink-0"
+              className="btn-secondary shrink-0"
             >
-              View <ArrowRight className="h-4 w-4" />
+              See full report
             </Link>
           </div>
         </div>
@@ -173,7 +232,7 @@ export function ReportsPage() {
             <tr>
               <th className="px-4 py-3">Campaign</th>
               <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Funnel</th>
+              <th className="px-4 py-3">Message delivery progress</th>
               <th className="px-4 py-3 text-right">Read rate</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -181,12 +240,19 @@ export function ReportsPage() {
           <tbody className="divide-y divide-slate-100">
             {campaigns.map((c) => {
               const rate = c.queued > 0 ? Math.round((c.seen / c.queued) * 100) : 0;
+              const everyoneRead = c.queued > 0 && c.seen === c.queued;
               return (
                 <tr key={c.id} className="hover:bg-slate-50/60">
                   <td className="px-4 py-3 font-medium">
                     <Link to={`/campaigns/${c.id}`} className="hover:text-brand-700">
                       {c.title}
                     </Link>
+                    {everyoneRead && (
+                      <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-emerald-700">
+                        <CheckCircle2 className="h-3 w-3" />
+                        All guests reached
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-500">
                     {new Date(c.createdAt).toLocaleString()}
@@ -205,10 +271,9 @@ export function ReportsPage() {
                   <td className="px-4 py-3 text-right">
                     <Link
                       to={`/campaigns/${c.id}`}
-                      className="btn-ghost"
-                      aria-label="Open campaign"
+                      className="text-sm font-medium text-brand-700 hover:text-brand-900 whitespace-nowrap"
                     >
-                      <ArrowRight className="h-4 w-4" />
+                      View details →
                     </Link>
                   </td>
                 </tr>
@@ -233,7 +298,7 @@ function HeroStat({
 }: {
   label: string;
   value: string;
-  hint: string;
+  hint: React.ReactNode;
   icon: React.ComponentType<{ className?: string }>;
   tone: "brand" | "indigo" | "emerald" | "amber";
   progress?: number;
@@ -285,8 +350,11 @@ function HeroStat({
   );
 }
 
-function DailyTrendCard({ entries }: { entries: Array<{ day: string; count: number }> }) {
-  // Normalize to the last 14 days for a tighter, readable chart.
+function DailyTrendCard({
+  entries,
+}: {
+  entries: Array<{ day: string; count: number }>;
+}) {
   const days: Array<{ day: string; count: number }> = [];
   for (let i = 13; i >= 0; i--) {
     const d = new Date();
@@ -298,16 +366,17 @@ function DailyTrendCard({ entries }: { entries: Array<{ day: string; count: numb
   }
   const max = Math.max(1, ...days.map((d) => d.count));
   const total = days.reduce((a, d) => a + d.count, 0);
+  const activeDays = days.filter((d) => d.count > 0).length;
 
   return (
     <div className="card p-5 lg:col-span-2">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <TrendingUp className="h-4 w-4 text-brand-600" />
           Last 14 days
         </div>
         <div className="text-xs text-slate-400">
-          {total.toLocaleString()} messages
+          {total.toLocaleString()} messages · {activeDays} active days
         </div>
       </div>
       <div className="flex items-end gap-1 h-28">
@@ -332,7 +401,17 @@ function DailyTrendCard({ entries }: { entries: Array<{ day: string; count: numb
   );
 }
 
-function ReadBucketsCard({ buckets }: { buckets: Partial<Record<string, number>> }) {
+function ReadBucketsCard({
+  buckets,
+  withinFive,
+  withinThirty,
+  bucketTotal,
+}: {
+  buckets: Partial<Record<string, number>>;
+  withinFive: number;
+  withinThirty: number;
+  bucketTotal: number;
+}) {
   const rows: Array<{ label: string; key: string }> = [
     { label: "Within 5 min", key: "lt5m" },
     { label: "5–30 min", key: "lt30m" },
@@ -340,42 +419,60 @@ function ReadBucketsCard({ buckets }: { buckets: Partial<Record<string, number>>
     { label: "1–3 h", key: "lt3h" },
     { label: "Over 3 h", key: "gt3h" },
   ];
-  const total = rows.reduce((a, r) => a + (buckets[r.key] ?? 0), 0);
   return (
     <div className="card p-5">
       <div className="flex items-center gap-2 text-sm font-semibold">
         <Timer className="h-4 w-4 text-brand-600" />
         How fast guests read
       </div>
-      {total === 0 ? (
+
+      {bucketTotal === 0 ? (
         <div className="mt-4 text-sm text-slate-400">
           No messages read yet — data will show here.
         </div>
       ) : (
-        <div className="mt-4 space-y-2">
-          {rows.map((r) => {
-            const c = buckets[r.key] ?? 0;
-            const pct = total > 0 ? Math.round((c / total) * 100) : 0;
-            return (
-              <div key={r.key}>
-                <div className="mb-1 flex items-center justify-between text-xs">
-                  <span className="text-slate-600">{r.label}</span>
-                  <span className="tabular-nums text-slate-500">{c} · {pct}%</span>
+        <>
+          <div className="mt-3 rounded-lg bg-brand-50/70 px-3 py-2 text-sm font-semibold text-brand-900">
+            {withinFive}% of guests read within{" "}
+            <span className="text-brand-700">5 minutes</span>
+            {withinThirty > withinFive && (
+              <span className="font-normal text-brand-700/80">
+                {" "}
+                · {withinThirty}% within 30 min
+              </span>
+            )}
+          </div>
+          <div className="mt-4 space-y-2">
+            {rows.map((r) => {
+              const c = buckets[r.key] ?? 0;
+              const pct = bucketTotal > 0 ? Math.round((c / bucketTotal) * 100) : 0;
+              return (
+                <div key={r.key}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="text-slate-600">{r.label}</span>
+                    <span className="tabular-nums text-slate-500">
+                      {c} · {pct}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-full bg-brand-500 transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className="h-full bg-brand-500 transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+          <p className="mt-4 text-xs text-slate-500">
+            Compare to email, where the typical open happens{" "}
+            <span className="font-medium text-slate-700">
+              ~{BENCHMARK_EMAIL_READ_MINUTES} min
+            </span>{" "}
+            after sending.
+          </p>
+        </>
       )}
-      <p className="mt-4 text-xs text-slate-500">
-        Compare to email, where the typical open happens <span className="font-medium text-slate-700">~{BENCHMARK_EMAIL_READ_MINUTES} min</span> after sending.
-      </p>
     </div>
   );
 }
@@ -402,7 +499,7 @@ function FunnelBar({
         <span>·</span>
         <span>Delivered {delivered}</span>
         <span>·</span>
-        <span className="text-emerald-700 font-medium">Seen {seen}</span>
+        <span className="text-emerald-700 font-medium">Read {seen}</span>
       </div>
       <div className="relative h-2 w-full rounded-full bg-slate-100 overflow-hidden">
         <div

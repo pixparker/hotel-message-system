@@ -60,7 +60,7 @@ export function CampaignDetailPage() {
         <Stat label="Recipients" value={data.totalsQueued} />
         <Stat label="Sent" value={data.totalsSent} />
         <Stat label="Delivered" value={data.totalsDelivered} />
-        <Stat label="Seen" value={data.totalsSeen} />
+        <Stat label="Read" value={data.totalsSeen} />
         <Stat label="Failed" value={data.totalsFailed} />
       </div>
 
@@ -72,7 +72,7 @@ export function CampaignDetailPage() {
               <th className="px-4 py-3">Language</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Sent</th>
-              <th className="px-4 py-3">Seen</th>
+              <th className="px-4 py-3">Read</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

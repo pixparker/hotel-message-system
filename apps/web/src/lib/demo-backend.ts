@@ -257,60 +257,101 @@ function seed(): State {
     },
   ];
 
-  // One completed campaign so reports have something out of the box.
-  const priorCampaignId = uuid();
-  const priorCampaign: Campaign = {
-    id: priorCampaignId,
-    orgId: ORG_ID,
-    createdBy: ADMIN_ID,
-    title: "Welcome blast — Saturday arrivals",
-    templateId: welcomeId,
-    customBodies: null,
-    recipientFilter: { status: "checked_in" },
-    isTest: false,
-    status: "done",
-    totalsQueued: 6,
-    totalsSent: 6,
-    totalsDelivered: 6,
-    totalsSeen: 6,
-    totalsFailed: 0,
-    createdAt: hoursAgo(18),
-    startedAt: hoursAgo(18),
-    finishedAt: hoursAgo(17.9),
-  };
-  const priorMessages: Message[] = guests
-    .filter((g) => g.status === "checked_in")
-    .map((g, i) => {
-      const bodies = Object.fromEntries(
-        templates.find((t) => t.id === welcomeId)!.bodies.map((b) => [b.language, b.body]),
-      );
-      const lang = bodies[g.language] ? g.language : "en";
-      const body = bodies[lang] ?? bodies.en ?? "";
-      const sentAt = new Date(Date.now() - 18 * 3600_000 + i * 2000);
-      const deliveredAt = new Date(sentAt.getTime() + 800 + Math.random() * 400);
-      const readAt = new Date(deliveredAt.getTime() + 60_000 + Math.random() * 300_000);
-      return {
+  // Synthetic historical campaigns spread across the last 14 days so the
+  // trend chart, time-to-read buckets, and top-performer card all have
+  // meaningful data from the moment the demo loads.
+  const history: Array<{
+    title: string;
+    hoursAgo: number;
+    messageCount: number;
+    failures: number;
+    readFraction: number; // 0..1
+  }> = [
+    { title: "Welcome blast — Saturday arrivals", hoursAgo: 18, messageCount: 6, failures: 0, readFraction: 1 },
+    { title: "Pool closes at 10pm reminder", hoursAgo: 72, messageCount: 14, failures: 1, readFraction: 0.93 },
+    { title: "Breakfast hours update", hoursAgo: 144, messageCount: 22, failures: 0, readFraction: 1 },
+    { title: "VIP upgrade — late checkout offer", hoursAgo: 240, messageCount: 8, failures: 0, readFraction: 1 },
+    { title: "Spa weekend promotion", hoursAgo: 312, messageCount: 18, failures: 1, readFraction: 0.94 },
+  ];
+
+  const campaignsList: Campaign[] = [];
+  const messagesList: Message[] = [];
+
+  for (const h of history) {
+    const id = uuid();
+    const read = Math.round(h.messageCount * h.readFraction);
+    const delivered = h.messageCount - h.failures;
+    const sent = delivered;
+    const seen = Math.min(read, delivered);
+    campaignsList.push({
+      id,
+      orgId: ORG_ID,
+      createdBy: ADMIN_ID,
+      title: h.title,
+      templateId: welcomeId,
+      customBodies: null,
+      recipientFilter: { status: "checked_in" },
+      isTest: false,
+      status: "done",
+      totalsQueued: h.messageCount,
+      totalsSent: sent,
+      totalsDelivered: delivered,
+      totalsSeen: seen,
+      totalsFailed: h.failures,
+      createdAt: hoursAgo(h.hoursAgo),
+      startedAt: hoursAgo(h.hoursAgo),
+      finishedAt: hoursAgo(h.hoursAgo - 0.1),
+    });
+
+    const welcomeBodies = Object.fromEntries(
+      templates.find((t) => t.id === welcomeId)!.bodies.map((b) => [b.language, b.body]),
+    );
+
+    for (let i = 0; i < h.messageCount; i++) {
+      const guest = guests[i % guests.length]!;
+      const lang = welcomeBodies[guest.language] ? guest.language : "en";
+      const body = welcomeBodies[lang] ?? welcomeBodies.en ?? "";
+      const sentAt = new Date(Date.now() - h.hoursAgo * 3600_000 + i * 3500);
+      const isFailed = i < h.failures;
+      const isRead = !isFailed && i < h.failures + read;
+      const deliveredAt = isFailed
+        ? null
+        : new Date(sentAt.getTime() + 600 + Math.random() * 600);
+      // Heavy bias toward <5min reads so the "killer value" stat is strong.
+      const readGap =
+        Math.random() < 0.8
+          ? 15_000 + Math.random() * 180_000 // 15s – 3 min
+          : Math.random() < 0.7
+            ? 5 * 60_000 + Math.random() * 20 * 60_000 // 5 – 25 min
+            : 45 * 60_000 + Math.random() * 60 * 60_000; // 45 – 105 min
+      const readAt =
+        isRead && deliveredAt
+          ? new Date(deliveredAt.getTime() + readGap)
+          : null;
+
+      messagesList.push({
         id: uuid(),
-        campaignId: priorCampaignId,
-        guestId: g.id,
-        phoneE164: g.phoneE164,
+        campaignId: id,
+        guestId: guest.id,
+        phoneE164: guest.phoneE164,
         language: lang,
         renderedBody: body,
-        providerMessageId: "mock_" + uuid(),
-        status: "read" as const,
-        error: null,
-        sentAt: sentAt.toISOString(),
-        deliveredAt: deliveredAt.toISOString(),
-        readAt: readAt.toISOString(),
-      };
-    });
+        providerMessageId: isFailed ? null : "mock_" + uuid(),
+        status: isFailed ? "failed" : isRead ? "read" : "delivered",
+        error: isFailed ? "mock: simulated provider failure" : null,
+        sentAt: isFailed ? null : sentAt.toISOString(),
+        deliveredAt: deliveredAt?.toISOString() ?? null,
+        readAt: readAt?.toISOString() ?? null,
+      });
+    }
+  }
 
   return {
     users: [admin],
     guests,
     templates,
-    campaigns: [priorCampaign],
-    messages: priorMessages,
+    campaigns: campaignsList,
+    messages: messagesList,
     settings: { orgId: ORG_ID, waProvider: "mock", defaultTestPhone: "+905551112233" },
   };
 }
