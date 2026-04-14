@@ -1,7 +1,8 @@
 import { useAuth } from "../state/auth.js";
 import { demoFetch } from "./demo-backend.js";
+import { env } from "./env.js";
 
-const DEMO = import.meta.env.VITE_DEMO === "1";
+const DEMO = env.VITE_DEMO;
 
 export class ApiError extends Error {
   constructor(

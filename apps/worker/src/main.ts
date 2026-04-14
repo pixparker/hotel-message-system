@@ -4,17 +4,15 @@ import pino from "pino";
 import { eq, and, sql } from "drizzle-orm";
 import { getDb, messages, campaigns, settings } from "@hms/db";
 import { createDriver, type WaDriver } from "@hms/wa-driver";
+import { env } from "./env.js";
 
-const log = pino({ name: "worker" });
-const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
-const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
-const pub = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
-const db = getDb();
+const log = pino({ name: "worker", level: env.LOG_LEVEL });
+const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
+const pub = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
+const db = getDb(env.DATABASE_URL);
 
 // Single shared driver for M1 (one org, one WA account).
-const driver: WaDriver = createDriver(
-  (process.env.WA_PROVIDER as "mock" | "cloud" | "baileys") ?? "mock",
-);
+const driver: WaDriver = createDriver(env.WA_PROVIDER);
 
 // Map providerMessageId → {campaignId, messageId} so status callbacks can find the row fast.
 const inflight = new Map<string, { messageId: string; campaignId: string }>();

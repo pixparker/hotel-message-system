@@ -1,3 +1,4 @@
 import pino from "pino";
+import { env } from "./env.js";
 
-export const log = pino({ level: process.env.LOG_LEVEL ?? "info" });
+export const log = pino({ level: env.LOG_LEVEL });

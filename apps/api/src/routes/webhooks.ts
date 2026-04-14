@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getDb, webhookEvents } from "@hms/db";
+import { env } from "../env.js";
 
 const db = getDb();
 
@@ -12,8 +13,8 @@ export const webhookRoutes = new Hono()
     const mode = c.req.query("hub.mode");
     const token = c.req.query("hub.verify_token");
     const challenge = c.req.query("hub.challenge");
-    const expected = process.env.WA_CLOUD_VERIFY_TOKEN ?? "hms-verify";
-    if (mode === "subscribe" && token === expected && challenge) {
+    const expected = env.WA_CLOUD_VERIFY_TOKEN;
+    if (mode === "subscribe" && expected && token === expected && challenge) {
       return c.text(challenge, 200);
     }
     return c.text("forbidden", 403);

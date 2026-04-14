@@ -45,8 +45,8 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 
 ## Stage 1 — Foundation (week 1)
 
-### 1. [ ] Secrets rotation + env schema
-**Scope**: Create `packages/shared/src/env.ts` with a Zod schema loaded at boot by api/worker/web. Rotate `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `DATABASE_URL`, `REDIS_URL`, any WA tokens. Move prod values out of `.env` into a platform secret store (Doppler or Fly secrets).
+### 1. [x] Secrets rotation + env schema
+**Scope**: Shared Zod schema at [packages/shared/src/env.ts](../../packages/shared/src/env.ts) (`loadServerEnv`, `loadWebEnv`, `requireDatabaseUrl`). Wired into [apps/api/src/env.ts](../../apps/api/src/env.ts), [apps/worker/src/env.ts](../../apps/worker/src/env.ts), [apps/web/src/lib/env.ts](../../apps/web/src/lib/env.ts). Strict `DATABASE_URL` in [drizzle.config.ts](../../packages/db/drizzle.config.ts) and [migrate.ts](../../packages/db/src/migrate.ts). Conditional refine: `WA_PROVIDER=cloud` requires cloud credentials; JWT secrets must differ in production and be ≥32 chars. Rotation runbook at [docs/runbook/secrets-rotation.md](../runbook/secrets-rotation.md).
 **Expectation**: api and worker refuse to start with missing/invalid env. No secret values remain in git history going forward (document rotation; history rewrite not required).
 
 ### 2. [ ] Row-Level Security + tenant query helper
