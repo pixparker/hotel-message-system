@@ -1,0 +1,27 @@
+{
+  "name": "@hms/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hms/db": "workspace:*",
+    "@hms/shared": "workspace:*",
+    "@hms/wa-driver": "workspace:*",
+    "bullmq": "^5.34.3",
+    "ioredis": "^5.4.2",
+    "drizzle-orm": "^0.38.3",
+    "postgres": "^3.4.5",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.2"
+  }
+}

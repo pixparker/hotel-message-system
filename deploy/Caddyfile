@@ -1,0 +1,9 @@
+{$SITE_DOMAIN:localhost} {
+    encode gzip
+    @api path /api/*
+    reverse_proxy @api api:4000
+
+    handle {
+        reverse_proxy web:80
+    }
+}

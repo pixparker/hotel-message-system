@@ -1,0 +1,104 @@
+import { z } from "zod";
+import { SUPPORTED_LANGUAGES } from "./languages.js";
+import { isValidPhone } from "./phone.js";
+
+export const languageSchema = z.enum(SUPPORTED_LANGUAGES);
+
+export const phoneSchema = z
+  .string()
+  .min(1, "Phone is required")
+  .refine((v) => isValidPhone(v), {
+    message: "Invalid phone number (use international format, e.g. +90 555 123 45 67)",
+  });
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const guestCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  phone: phoneSchema,
+  language: languageSchema,
+});
+
+export const guestUpdateSchema = guestCreateSchema.partial();
+
+export const templateBodySchema = z.object({
+  language: languageSchema,
+  body: z.string().min(1).max(4096),
+});
+
+export const templateCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(500).optional(),
+  bodies: z.array(templateBodySchema).min(1),
+});
+
+export const recipientFilterSchema = z.object({
+  status: z.enum(["checked_in", "checked_out"]).default("checked_in"),
+});
+
+export const campaignCreateSchema = z
+  .object({
+    title: z.string().min(1).max(200),
+    templateId: z.string().uuid().optional(),
+    customBodies: z.record(languageSchema, z.string().min(1).max(4096)).optional(),
+    recipientFilter: recipientFilterSchema.default({ status: "checked_in" }),
+  })
+  .refine((v) => v.templateId || (v.customBodies && Object.keys(v.customBodies).length > 0), {
+    message: "Provide either templateId or customBodies",
+    path: ["templateId"],
+  });
+
+export const testMessageSchema = z.object({
+  phone: phoneSchema,
+  templateId: z.string().uuid().optional(),
+  customBodies: z.record(languageSchema, z.string().min(1).max(4096)).optional(),
+  language: languageSchema,
+});
+
+export const settingsUpdateSchema = z.object({
+  waProvider: z.enum(["mock", "cloud", "baileys"]).optional(),
+  waConfig: z.record(z.unknown()).optional(),
+  defaultTestPhone: phoneSchema.optional(),
+});
+
+export const userUpdateSchema = z.object({
+  testPhone: phoneSchema.optional(),
+});
+
+export type LoginInput = z.infer<typeof loginSchema>;
+export type GuestCreateInput = z.infer<typeof guestCreateSchema>;
+export type TemplateCreateInput = z.infer<typeof templateCreateSchema>;
+export type CampaignCreateInput = z.infer<typeof campaignCreateSchema>;
+export type TestMessageInput = z.infer<typeof testMessageSchema>;
+export type SettingsUpdateInput = z.infer<typeof settingsUpdateSchema>;
+
+// --- Streamed events (API → UI via SSE) ---
+export const sseEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("snapshot"),
+    campaignId: z.string().uuid(),
+    totals: z.object({
+      queued: z.number(),
+      sent: z.number(),
+      delivered: z.number(),
+      seen: z.number(),
+      failed: z.number(),
+    }),
+    status: z.enum(["draft", "sending", "done", "cancelled"]),
+  }),
+  z.object({
+    type: z.literal("progress"),
+    campaignId: z.string().uuid(),
+    messageId: z.string().uuid(),
+    status: z.enum(["sent", "delivered", "read", "failed"]),
+  }),
+  z.object({
+    type: z.literal("done"),
+    campaignId: z.string().uuid(),
+  }),
+]);
+
+export type SseEvent = z.infer<typeof sseEventSchema>;
