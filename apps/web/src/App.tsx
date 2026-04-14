@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./state/auth.js";
 import { AppShell } from "./components/AppShell.js";
+import { DemoBanner } from "./components/DemoBanner.js";
 import { LoginPage } from "./routes/login.js";
 import { DashboardPage } from "./routes/dashboard.js";
 import { GuestsPage } from "./routes/guests.js";
@@ -20,6 +21,9 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export function App() {
   return (
+    <div className="flex flex-col min-h-full">
+      <DemoBanner />
+      <div className="flex-1">
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
@@ -41,5 +45,7 @@ export function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+      </div>
+    </div>
   );
 }

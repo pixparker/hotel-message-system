@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../state/auth.js";
+import { api } from "../lib/api.js";
 
 export interface CampaignTotals {
   queued: number;
@@ -27,18 +28,21 @@ export function useCampaignStream(campaignId: string): CampaignStreamState {
     status: "sending",
     done: false,
   });
-  const token = useAuth((s) => s.accessToken);
   const stopped = useRef(false);
+  useAuth((s) => s.accessToken); // re-run if token changes
 
   useEffect(() => {
     stopped.current = false;
     async function tick() {
       try {
-        const res = await fetch(`/api/campaigns/${campaignId}`, {
-          headers: token ? { authorization: `Bearer ${token}` } : undefined,
-        });
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await api<{
+          status: "draft" | "sending" | "done" | "cancelled";
+          totalsQueued: number;
+          totalsSent: number;
+          totalsDelivered: number;
+          totalsSeen: number;
+          totalsFailed: number;
+        }>(`/api/campaigns/${campaignId}`);
         setState({
           totals: {
             queued: data.totalsQueued,
@@ -60,7 +64,7 @@ export function useCampaignStream(campaignId: string): CampaignStreamState {
     return () => {
       stopped.current = true;
     };
-  }, [campaignId, token]);
+  }, [campaignId]);
 
   return state;
 }

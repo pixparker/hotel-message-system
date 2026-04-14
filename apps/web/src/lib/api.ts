@@ -1,4 +1,7 @@
 import { useAuth } from "../state/auth.js";
+import { demoFetch } from "./demo-backend.js";
+
+const DEMO = import.meta.env.VITE_DEMO === "1";
 
 export class ApiError extends Error {
   constructor(
@@ -10,6 +13,8 @@ export class ApiError extends Error {
   }
 }
 
+export const IS_DEMO = DEMO;
+
 export async function api<T = unknown>(
   path: string,
   init: RequestInit = {},
@@ -19,7 +24,10 @@ export async function api<T = unknown>(
   headers.set("content-type", "application/json");
   if (token) headers.set("authorization", `Bearer ${token}`);
 
-  const res = await fetch(path, { ...init, headers });
+  const res = DEMO
+    ? await demoFetch(path, { ...init, headers })
+    : await fetch(path, { ...init, headers });
+
   if (res.status === 401) {
     useAuth.getState().logout();
   }
