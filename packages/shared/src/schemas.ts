@@ -20,6 +20,7 @@ export const guestCreateSchema = z.object({
   name: z.string().min(1).max(120),
   phone: phoneSchema,
   language: languageSchema,
+  roomNumber: z.string().max(20).optional(),
 });
 
 export const guestUpdateSchema = guestCreateSchema.partial();

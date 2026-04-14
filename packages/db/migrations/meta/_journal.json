@@ -8,6 +8,13 @@
       "when": 1776156403143,
       "tag": "0000_sticky_doctor_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776158042912,
+      "tag": "0001_keen_radioactive_man",
+      "breakpoints": true
     }
   ]
 }

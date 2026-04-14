@@ -1,0 +1,245 @@
+import { Hono } from "hono";
+import { and, eq, gte, sql } from "drizzle-orm";
+import {
+  getDb,
+  guests,
+  campaigns,
+  messages,
+} from "@hms/db";
+import { requireAuth, currentOrgId } from "../auth.js";
+
+const db = getDb();
+const DAY = 86400_000;
+
+export const statsRoutes = new Hono()
+  .use(requireAuth)
+  .get("/dashboard", async (c) => {
+    const orgId = currentOrgId(c);
+    const since7d = new Date(Date.now() - 7 * DAY);
+
+    const activeGuests = await db
+      .select({ count: sql<number>`count(*)::int`, language: guests.language })
+      .from(guests)
+      .where(and(eq(guests.orgId, orgId), eq(guests.status, "checked_in")))
+      .groupBy(guests.language);
+
+    const totalActive = activeGuests.reduce((a, r) => a + Number(r.count), 0);
+
+    const [totals] = await db
+      .select({
+        campaigns: sql<number>`count(*)::int`,
+      })
+      .from(campaigns)
+      .where(and(eq(campaigns.orgId, orgId), eq(campaigns.isTest, false)));
+
+    const [last7dAgg] = await db
+      .select({
+        campaigns: sql<number>`count(*)::int`,
+        sent: sql<number>`coalesce(sum(${campaigns.totalsSent}), 0)::int`,
+        delivered: sql<number>`coalesce(sum(${campaigns.totalsDelivered}), 0)::int`,
+        seen: sql<number>`coalesce(sum(${campaigns.totalsSeen}), 0)::int`,
+        failed: sql<number>`coalesce(sum(${campaigns.totalsFailed}), 0)::int`,
+      })
+      .from(campaigns)
+      .where(
+        and(
+          eq(campaigns.orgId, orgId),
+          eq(campaigns.isTest, false),
+          gte(campaigns.createdAt, since7d),
+        ),
+      );
+
+    const [readTimeAgg] = await db
+      .select({
+        avgReadMs: sql<number>`coalesce(avg(extract(epoch from (${messages.readAt} - ${messages.sentAt})) * 1000), 0)::bigint`,
+      })
+      .from(messages)
+      .innerJoin(campaigns, eq(messages.campaignId, campaigns.id))
+      .where(
+        and(
+          eq(campaigns.orgId, orgId),
+          eq(campaigns.isTest, false),
+          gte(messages.sentAt, since7d),
+        ),
+      );
+
+    const recentCampaigns = await db
+      .select({
+        id: campaigns.id,
+        title: campaigns.title,
+        createdAt: campaigns.createdAt,
+        status: campaigns.status,
+        queued: campaigns.totalsQueued,
+        sent: campaigns.totalsSent,
+        delivered: campaigns.totalsDelivered,
+        seen: campaigns.totalsSeen,
+      })
+      .from(campaigns)
+      .where(and(eq(campaigns.orgId, orgId), eq(campaigns.isTest, false)))
+      .orderBy(sql`${campaigns.createdAt} desc`)
+      .limit(5);
+
+    const sent7d = Number(last7dAgg?.sent ?? 0);
+    const seen7d = Number(last7dAgg?.seen ?? 0);
+    const readRate = sent7d > 0 ? Math.round((seen7d / sent7d) * 1000) / 10 : 0;
+
+    return c.json({
+      activeGuests: {
+        total: totalActive,
+        byLanguage: activeGuests.map((r) => ({
+          language: r.language,
+          count: Number(r.count),
+        })),
+      },
+      campaigns: {
+        total: Number(totals?.campaigns ?? 0),
+        last7dCount: Number(last7dAgg?.campaigns ?? 0),
+        last7dSent: sent7d,
+        last7dDelivered: Number(last7dAgg?.delivered ?? 0),
+        last7dSeen: seen7d,
+        last7dFailed: Number(last7dAgg?.failed ?? 0),
+        readRatePercent: readRate,
+        avgReadMs: Number(readTimeAgg?.avgReadMs ?? 0),
+      },
+      recentCampaigns,
+    });
+  })
+  .get("/reports", async (c) => {
+    const orgId = currentOrgId(c);
+    const since30d = new Date(Date.now() - 30 * DAY);
+
+    const [allTime] = await db
+      .select({
+        campaigns: sql<number>`count(*)::int`,
+        queued: sql<number>`coalesce(sum(${campaigns.totalsQueued}), 0)::int`,
+        sent: sql<number>`coalesce(sum(${campaigns.totalsSent}), 0)::int`,
+        delivered: sql<number>`coalesce(sum(${campaigns.totalsDelivered}), 0)::int`,
+        seen: sql<number>`coalesce(sum(${campaigns.totalsSeen}), 0)::int`,
+        failed: sql<number>`coalesce(sum(${campaigns.totalsFailed}), 0)::int`,
+      })
+      .from(campaigns)
+      .where(and(eq(campaigns.orgId, orgId), eq(campaigns.isTest, false)));
+
+    const [uniqueGuests] = await db
+      .select({
+        count: sql<number>`count(distinct ${messages.guestId})::int`,
+      })
+      .from(messages)
+      .innerJoin(campaigns, eq(messages.campaignId, campaigns.id))
+      .where(and(eq(campaigns.orgId, orgId), eq(campaigns.isTest, false)));
+
+    const [readTiming] = await db
+      .select({
+        avgMs: sql<number>`coalesce(avg(extract(epoch from (${messages.readAt} - ${messages.sentAt})) * 1000), 0)::bigint`,
+        medianMs: sql<number>`coalesce(percentile_cont(0.5) within group (order by extract(epoch from (${messages.readAt} - ${messages.sentAt})) * 1000), 0)::bigint`,
+      })
+      .from(messages)
+      .innerJoin(campaigns, eq(messages.campaignId, campaigns.id))
+      .where(and(eq(campaigns.orgId, orgId), eq(campaigns.isTest, false)));
+
+    const dailySent = await db
+      .select({
+        day: sql<string>`date_trunc('day', ${messages.sentAt})::date::text`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(messages)
+      .innerJoin(campaigns, eq(messages.campaignId, campaigns.id))
+      .where(
+        and(
+          eq(campaigns.orgId, orgId),
+          eq(campaigns.isTest, false),
+          gte(messages.sentAt, since30d),
+        ),
+      )
+      .groupBy(sql`date_trunc('day', ${messages.sentAt})`)
+      .orderBy(sql`date_trunc('day', ${messages.sentAt})`);
+
+    const readBuckets = await db
+      .select({
+        bucket: sql<string>`case
+          when extract(epoch from (${messages.readAt} - ${messages.sentAt})) < 300 then 'lt5m'
+          when extract(epoch from (${messages.readAt} - ${messages.sentAt})) < 1800 then 'lt30m'
+          when extract(epoch from (${messages.readAt} - ${messages.sentAt})) < 3600 then 'lt1h'
+          when extract(epoch from (${messages.readAt} - ${messages.sentAt})) < 10800 then 'lt3h'
+          else 'gt3h'
+        end`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(messages)
+      .innerJoin(campaigns, eq(messages.campaignId, campaigns.id))
+      .where(
+        and(
+          eq(campaigns.orgId, orgId),
+          eq(campaigns.isTest, false),
+          sql`${messages.readAt} is not null`,
+          sql`${messages.sentAt} is not null`,
+        ),
+      )
+      .groupBy(sql`1`);
+
+    const top = await db
+      .select({
+        id: campaigns.id,
+        title: campaigns.title,
+        createdAt: campaigns.createdAt,
+        queued: campaigns.totalsQueued,
+        seen: campaigns.totalsSeen,
+      })
+      .from(campaigns)
+      .where(
+        and(
+          eq(campaigns.orgId, orgId),
+          eq(campaigns.isTest, false),
+          sql`${campaigns.totalsQueued} >= 3`,
+        ),
+      )
+      .orderBy(
+        sql`(${campaigns.totalsSeen}::float / nullif(${campaigns.totalsQueued}, 0)) desc nulls last`,
+      )
+      .limit(1);
+
+    const campaignsList = await db
+      .select({
+        id: campaigns.id,
+        title: campaigns.title,
+        createdAt: campaigns.createdAt,
+        status: campaigns.status,
+        queued: campaigns.totalsQueued,
+        sent: campaigns.totalsSent,
+        delivered: campaigns.totalsDelivered,
+        seen: campaigns.totalsSeen,
+        failed: campaigns.totalsFailed,
+      })
+      .from(campaigns)
+      .where(and(eq(campaigns.orgId, orgId), eq(campaigns.isTest, false)))
+      .orderBy(sql`${campaigns.createdAt} desc`)
+      .limit(100);
+
+    const sent = Number(allTime?.sent ?? 0);
+    const delivered = Number(allTime?.delivered ?? 0);
+    const seen = Number(allTime?.seen ?? 0);
+
+    return c.json({
+      totals: {
+        campaigns: Number(allTime?.campaigns ?? 0),
+        queued: Number(allTime?.queued ?? 0),
+        sent,
+        delivered,
+        seen,
+        failed: Number(allTime?.failed ?? 0),
+        uniqueGuests: Number(uniqueGuests?.count ?? 0),
+        deliveryRate: sent > 0 ? Math.round((delivered / sent) * 1000) / 10 : 0,
+        readRate: sent > 0 ? Math.round((seen / sent) * 1000) / 10 : 0,
+      },
+      readTiming: {
+        avgMs: Number(readTiming?.avgMs ?? 0),
+        medianMs: Number(readTiming?.medianMs ?? 0),
+      },
+      dailySent: dailySent.map((d) => ({ day: d.day, count: Number(d.count) })),
+      readBuckets: Object.fromEntries(
+        readBuckets.map((b) => [b.bucket, Number(b.count)]),
+      ) as Record<string, number>,
+      topCampaign: top[0] ?? null,
+      campaigns: campaignsList,
+    });
+  });

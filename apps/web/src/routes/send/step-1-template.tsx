@@ -1,21 +1,22 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { FileText, Wand2, ArrowRight } from "lucide-react";
 import { useWizard } from "../../state/wizard.js";
 import { useTemplates } from "../../hooks/useTemplates.js";
 import { cn } from "../../lib/cn.js";
 
 export function Step1Template() {
-  const { mode, templateId, title, patch } = useWizard();
+  const { mode, templateId, patch } = useWizard();
   const { data: templates, isLoading } = useTemplates();
   const navigate = useNavigate();
 
-  const canNext = (mode === "template" && templateId) || (mode === "custom" && title.trim().length > 0);
+  const canNext =
+    (mode === "template" && !!templateId) || mode === "custom";
 
   return (
     <div className="space-y-6">
       <div className="grid gap-3 md:grid-cols-2">
         <button
-          onClick={() => patch({ mode: "template" })}
+          onClick={() => patch({ mode: "template", customBodies: {} })}
           className={cn(
             "card p-5 text-left transition",
             mode === "template" && "ring-2 ring-brand-500",
@@ -28,7 +29,9 @@ export function Step1Template() {
           </div>
         </button>
         <button
-          onClick={() => patch({ mode: "custom", templateId: null })}
+          onClick={() =>
+            patch({ mode: "custom", templateId: null, customBodies: {}, title: "" })
+          }
           className={cn(
             "card p-5 text-left transition",
             mode === "custom" && "ring-2 ring-brand-500",
@@ -37,7 +40,7 @@ export function Step1Template() {
           <Wand2 className="h-5 w-5 text-brand-600" />
           <div className="mt-3 font-semibold">Write a custom message</div>
           <div className="text-sm text-slate-500">
-            Draft a one-off message, still translatable.
+            Draft a one-off message — no naming needed until you send.
           </div>
         </button>
       </div>
@@ -54,7 +57,13 @@ export function Step1Template() {
               {templates.map((t) => (
                 <li key={t.id}>
                   <button
-                    onClick={() => patch({ templateId: t.id, title: t.name })}
+                    onClick={() =>
+                      patch({
+                        templateId: t.id,
+                        title: t.name,
+                        customBodies: {},
+                      })
+                    }
                     className={cn(
                       "w-full text-left px-3 py-3 rounded-lg transition",
                       templateId === t.id ? "bg-brand-50" : "hover:bg-slate-50",
@@ -79,23 +88,6 @@ export function Step1Template() {
               ))}
             </ul>
           )}
-        </div>
-      )}
-
-      {mode === "custom" && (
-        <div className="card p-5 space-y-3">
-          <div>
-            <label className="label" htmlFor="title">
-              Campaign title
-            </label>
-            <input
-              id="title"
-              className="input mt-1"
-              placeholder="e.g. Late-night pool reminder"
-              value={title}
-              onChange={(e) => patch({ title: e.target.value })}
-            />
-          </div>
         </div>
       )}
 

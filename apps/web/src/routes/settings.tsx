@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Page } from "../components/Page.js";
 import { api } from "../lib/api.js";
 import { useToast } from "../components/toast.js";
+import { PhoneInput } from "../components/PhoneInput.js";
 
 interface Settings {
   waProvider: "mock" | "cloud" | "baileys";
@@ -65,12 +66,11 @@ export function SettingsPage() {
           <label className="label" htmlFor="test">
             Default test number (fallback for staff without a personal one)
           </label>
-          <input
+          <PhoneInput
             id="test"
-            className="input mt-1 tabular-nums"
             value={defaultTestPhone}
-            onChange={(e) => setDefaultTestPhone(e.target.value)}
-            placeholder="+90 555 123 45 67"
+            onChange={setDefaultTestPhone}
+            className="mt-1"
           />
         </div>
         <div className="flex justify-end">

@@ -7,5 +7,6 @@ coverage
 .env
 .env.local
 *.log
+*.tsbuildinfo
 .DS_Store
 deploy/data

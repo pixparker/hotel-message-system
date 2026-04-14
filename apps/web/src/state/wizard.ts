@@ -10,6 +10,8 @@ export interface WizardState {
   customBodies: Partial<Record<Language, string>>;
   primaryLanguage: Language;
   recipientStatus: "checked_in" | "checked_out";
+  saveAsTemplate: boolean;
+  templateName: string;
   reset: () => void;
   patch: (p: Partial<Omit<WizardState, "reset" | "patch">>) => void;
 }
@@ -22,6 +24,8 @@ const initial = {
   customBodies: {},
   primaryLanguage: "en" as Language,
   recipientStatus: "checked_in" as const,
+  saveAsTemplate: false,
+  templateName: "",
 };
 
 export const useWizard = create<WizardState>()(

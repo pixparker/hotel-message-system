@@ -43,21 +43,41 @@ export function LoginPage() {
 
   return (
     <div className="min-h-full grid lg:grid-cols-2">
-      <div className="hidden lg:flex items-end bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 text-white p-12">
-        <div className="max-w-md">
+      <div
+        className="relative hidden lg:flex items-end text-white p-12 overflow-hidden bg-slate-900"
+        style={{
+          backgroundImage:
+            "url('https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=1600&q=80')",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-900/85 via-brand-800/70 to-slate-900/85" />
+        <div className="relative max-w-md">
           <div className="flex items-center gap-2 mb-8">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15 backdrop-blur">
               <MessageCircle className="h-5 w-5" />
             </div>
             <div className="font-semibold">Reform Hotel</div>
           </div>
-          <h2 className="text-3xl font-semibold leading-tight">
+          <h2 className="text-4xl font-semibold leading-tight">
             Reach every guest in seconds.
           </h2>
-          <p className="mt-4 text-brand-100">
+          <p className="mt-4 text-brand-50/90 text-lg leading-relaxed">
             One wizard, all your languages. Deliver personal WhatsApp messages
             without ever leaving the front desk.
           </p>
+          <div className="mt-8 flex gap-6 text-sm">
+            <div>
+              <div className="text-2xl font-semibold tabular-nums">98%</div>
+              <div className="text-brand-100/80">WhatsApp read rate</div>
+            </div>
+            <div className="h-10 w-px bg-white/20" />
+            <div>
+              <div className="text-2xl font-semibold tabular-nums">&lt;30s</div>
+              <div className="text-brand-100/80">to send a campaign</div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -1,13 +1,18 @@
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { CheckCircle2, AlertTriangle, X } from "lucide-react";
+import { CheckCircle2, AlertTriangle, X, Undo2 } from "lucide-react";
 
 type Variant = "success" | "error";
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
 interface ToastItem {
   id: number;
   title: string;
   description?: string;
   variant: Variant;
+  action?: ToastAction;
 }
 
 const Ctx = createContext<{ push: (t: Omit<ToastItem, "id">) => void }>({
@@ -27,7 +32,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           setItems((prev) => [...prev, { ...t, id: Date.now() + Math.random() }]),
       }}
     >
-      <ToastPrimitive.Provider swipeDirection="right" duration={4500}>
+      <ToastPrimitive.Provider swipeDirection="right" duration={5000}>
         {children}
         {items.map((item) => (
           <ToastPrimitive.Root
@@ -38,11 +43,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             className="card flex items-start gap-3 p-4 data-[state=open]:animate-in data-[state=open]:fade-in"
           >
             {item.variant === "success" ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+              <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
             ) : (
-              <AlertTriangle className="h-5 w-5 text-rose-500" />
+              <AlertTriangle className="h-5 w-5 text-rose-500 shrink-0" />
             )}
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <ToastPrimitive.Title className="text-sm font-medium">
                 {item.title}
               </ToastPrimitive.Title>
@@ -52,7 +57,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 </ToastPrimitive.Description>
               )}
             </div>
-            <ToastPrimitive.Close className="text-slate-400 hover:text-slate-700">
+            {item.action && (
+              <ToastPrimitive.Action
+                altText={item.action.label}
+                asChild
+                onClick={() => {
+                  item.action!.onClick();
+                  setItems((prev) => prev.filter((p) => p.id !== item.id));
+                }}
+              >
+                <button className="btn-ghost !px-2 !py-1 text-brand-700 font-medium">
+                  <Undo2 className="h-4 w-4" />
+                  {item.action.label}
+                </button>
+              </ToastPrimitive.Action>
+            )}
+            <ToastPrimitive.Close className="text-slate-400 hover:text-slate-700 shrink-0">
               <X className="h-4 w-4" />
             </ToastPrimitive.Close>
           </ToastPrimitive.Root>

@@ -65,6 +65,7 @@ export const guests = pgTable(
     name: text("name").notNull(),
     phoneE164: text("phone_e164").notNull(),
     language: text("language").notNull().default("en"),
+    roomNumber: text("room_number"),
     status: guestStatus("status").notNull().default("checked_in"),
     checkedInAt: timestamp("checked_in_at", { withTimezone: true }).notNull().defaultNow(),
     checkedOutAt: timestamp("checked_out_at", { withTimezone: true }),

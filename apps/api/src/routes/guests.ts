@@ -33,6 +33,7 @@ export const guestRoutes = new Hono()
         name: body.name,
         phoneE164,
         language: body.language,
+        roomNumber: body.roomNumber?.trim() || null,
         status: "checked_in",
       })
       .returning();
@@ -46,6 +47,8 @@ export const guestRoutes = new Hono()
     if (body.name) patch.name = body.name;
     if (body.phone) patch.phoneE164 = normalizePhone(body.phone);
     if (body.language) patch.language = body.language;
+    if (body.roomNumber !== undefined)
+      patch.roomNumber = body.roomNumber?.trim() || null;
     const [row] = await db
       .update(guests)
       .set(patch)
@@ -60,6 +63,17 @@ export const guestRoutes = new Hono()
     const [row] = await db
       .update(guests)
       .set({ status: "checked_out", checkedOutAt: new Date() })
+      .where(and(eq(guests.id, id), eq(guests.orgId, orgId)))
+      .returning();
+    if (!row) return c.json({ error: "not_found" }, 404);
+    return c.json(row);
+  })
+  .post("/:id/checkin", async (c) => {
+    const id = c.req.param("id");
+    const orgId = currentOrgId(c);
+    const [row] = await db
+      .update(guests)
+      .set({ status: "checked_in", checkedOutAt: null, checkedInAt: new Date() })
       .where(and(eq(guests.id, id), eq(guests.orgId, orgId)))
       .returning();
     if (!row) return c.json({ error: "not_found" }, 404);

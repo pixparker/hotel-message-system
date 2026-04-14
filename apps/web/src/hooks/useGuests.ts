@@ -6,6 +6,7 @@ export interface Guest {
   name: string;
   phoneE164: string;
   language: string;
+  roomNumber: string | null;
   status: "checked_in" | "checked_out";
   checkedInAt: string;
   checkedOutAt: string | null;
@@ -22,8 +23,12 @@ export function useGuests(status?: "checked_in" | "checked_out") {
 export function useCheckInGuest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; phone: string; language: string }) =>
-      api<Guest>("/api/guests", { method: "POST", body: JSON.stringify(input) }),
+    mutationFn: (input: {
+      name: string;
+      phone: string;
+      language: string;
+      roomNumber?: string;
+    }) => api<Guest>("/api/guests", { method: "POST", body: JSON.stringify(input) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["guests"] }),
   });
 }
@@ -33,6 +38,15 @@ export function useCheckOutGuest() {
   return useMutation({
     mutationFn: (id: string) =>
       api<Guest>(`/api/guests/${id}/checkout`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["guests"] }),
+  });
+}
+
+export function useUndoCheckOut() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<Guest>(`/api/guests/${id}/checkin`, { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["guests"] }),
   });
 }

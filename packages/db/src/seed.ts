@@ -41,13 +41,14 @@ const [admin] = await db
   })
   .returning();
 
+// ~70% of guests get a room number; the rest are walk-ins / unassigned.
 await db.insert(guests).values([
-  { orgId: org!.id, name: "Ayşe Yılmaz", phoneE164: "+905321112233", language: "tr" },
-  { orgId: org!.id, name: "John Parker", phoneE164: "+14155552671", language: "en" },
-  { orgId: org!.id, name: "Farhad Karimi", phoneE164: "+989121234567", language: "fa" },
+  { orgId: org!.id, name: "Ayşe Yılmaz", phoneE164: "+905321112233", language: "tr", roomNumber: "204" },
+  { orgId: org!.id, name: "John Parker", phoneE164: "+14155552671", language: "en", roomNumber: "312" },
+  { orgId: org!.id, name: "Farhad Karimi", phoneE164: "+989121234567", language: "fa", roomNumber: "508" },
   { orgId: org!.id, name: "Marta Silva", phoneE164: "+351912345678", language: "en" },
-  { orgId: org!.id, name: "Mehmet Demir", phoneE164: "+905331234567", language: "tr" },
-  { orgId: org!.id, name: "Sara Ahmadi", phoneE164: "+989351112233", language: "fa" },
+  { orgId: org!.id, name: "Mehmet Demir", phoneE164: "+905331234567", language: "tr", roomNumber: "221" },
+  { orgId: org!.id, name: "Sara Ahmadi", phoneE164: "+989351112233", language: "fa", roomNumber: "417" },
   {
     orgId: org!.id,
     name: "David Cohen",

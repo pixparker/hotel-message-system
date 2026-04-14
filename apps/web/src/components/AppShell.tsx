@@ -7,6 +7,7 @@ import {
   Settings,
   LogOut,
   MessageCircle,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "../state/auth.js";
 import { cn } from "../lib/cn.js";
@@ -14,6 +15,7 @@ import { cn } from "../lib/cn.js";
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/guests", label: "Guests", icon: Users },
+  { to: "/templates", label: "Templates", icon: FileText },
   { to: "/send", label: "Send message", icon: Send },
   { to: "/reports", label: "Reports", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },
