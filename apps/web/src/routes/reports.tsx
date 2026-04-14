@@ -97,10 +97,12 @@ export function ReportsPage() {
       description="How your guest messages actually perform — with industry context."
     >
       {totals.readRate >= 95 && totals.sent > 0 && (
-        <div className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-4 py-3">
-          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-emerald-50/60 to-white px-5 py-3.5 shadow-[0_8px_24px_-16px_rgba(16,185,129,0.4)]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_6px_16px_-4px_rgba(16,185,129,0.55)]">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
           <div className="text-sm">
-            <span className="font-semibold text-emerald-800">
+            <span className="font-semibold text-emerald-900">
               All guests reached successfully.
             </span>{" "}
             <span className="text-slate-600">
@@ -181,13 +183,14 @@ export function ReportsPage() {
       </div>
 
       {topCampaign && topCampaign.queued > 0 && (
-        <div className="mt-6 card p-5 border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-white">
+        <div className="mt-6 card p-5 border-accent-200 bg-gradient-to-br from-accent-50/80 via-white to-white shadow-lift">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-gradient text-white shadow-[0_10px_24px_-8px_rgba(228,155,15,0.55)] ring-1 ring-inset ring-white/20">
               <Trophy className="h-6 w-6" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">
+              <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-accent-700 font-semibold">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent-500" />
                 Top performer
               </div>
               <div className="mt-1 text-lg font-semibold text-slate-900">
@@ -265,8 +268,18 @@ export function ReportsPage() {
                       seen={c.seen}
                     />
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-semibold">
-                    {rate}%
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    <span
+                      className={`text-lg font-bold ${
+                        rate >= 90
+                          ? "text-emerald-700"
+                          : rate >= 60
+                            ? "text-brand-700"
+                            : "text-slate-700"
+                      }`}
+                    >
+                      {rate}%
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link
@@ -306,40 +319,51 @@ function HeroStat({
   benchmarkLabel?: string;
 }) {
   const toneMap = {
-    brand: "bg-brand-50 text-brand-700",
-    indigo: "bg-indigo-50 text-indigo-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    amber: "bg-amber-50 text-amber-700",
+    brand: "bg-brand-50 text-brand-700 ring-brand-100",
+    indigo: "bg-indigo-50 text-indigo-700 ring-indigo-100",
+    emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    amber: "bg-accent-50 text-accent-700 ring-accent-100",
   };
   const barMap = {
-    brand: "bg-brand-500",
-    indigo: "bg-indigo-500",
-    emerald: "bg-emerald-500",
-    amber: "bg-amber-500",
+    brand: "from-brand-500 to-brand-400",
+    indigo: "from-indigo-500 to-indigo-400",
+    emerald: "from-emerald-500 to-emerald-400",
+    amber: "from-accent-500 to-accent-400",
   };
+  const hero = tone === "emerald";
   return (
-    <div className="card p-5">
+    <div
+      className={`card p-5 transition hover:shadow-lift hover:-translate-y-[1px] ${
+        hero ? "ring-1 ring-emerald-200/60 bg-gradient-to-br from-emerald-50/60 to-white" : ""
+      }`}
+    >
       <div className="flex items-start justify-between">
-        <div className="text-sm font-medium text-slate-500">{label}</div>
+        <div className="text-[13px] font-medium text-slate-500">{label}</div>
         <div
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${toneMap[tone]}`}
+          className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ring-1 ${toneMap[tone]}`}
         >
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <div className="mt-3 text-3xl font-semibold tabular-nums text-slate-900">
+      <div
+        className={`mt-4 ${
+          hero
+            ? "text-5xl font-bold tabular-nums tracking-tight bg-clip-text text-transparent bg-gradient-to-br from-emerald-700 via-emerald-600 to-emerald-500"
+            : "metric-xl"
+        }`}
+      >
         {value}
       </div>
-      <div className="mt-1 text-xs text-slate-500">{hint}</div>
+      <div className="mt-1.5 text-xs text-slate-500">{hint}</div>
       {progress !== undefined && (
-        <div className="mt-3 relative h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+        <div className="progress-track mt-3">
           <div
-            className={`h-full ${barMap[tone]} transition-all`}
+            className={`progress-fill bg-gradient-to-r ${barMap[tone]}`}
             style={{ width: `${Math.min(100, progress)}%` }}
           />
           {benchmark !== undefined && (
             <div
-              className="absolute top-0 h-full w-0.5 bg-slate-400"
+              className="absolute top-0 h-full w-0.5 bg-slate-500/60"
               style={{ left: `${Math.min(100, benchmark)}%` }}
               title={benchmarkLabel}
             />
@@ -387,7 +411,7 @@ function DailyTrendCard({
             title={`${d.day}: ${d.count}`}
           >
             <div
-              className="w-full rounded-t bg-brand-500/80 hover:bg-brand-600 transition-colors min-h-[2px]"
+              className="w-full rounded-t bg-gradient-to-t from-brand-600 to-brand-400 hover:from-brand-700 hover:to-brand-500 transition-colors min-h-[2px] shadow-[0_1px_0_rgba(255,255,255,0.3)_inset]"
               style={{ height: `${(d.count / max) * 100}%` }}
             />
           </div>
@@ -432,14 +456,17 @@ function ReadBucketsCard({
         </div>
       ) : (
         <>
-          <div className="mt-3 rounded-lg bg-brand-50/70 px-3 py-2 text-sm font-semibold text-brand-900">
-            {withinFive}% of guests read within{" "}
-            <span className="text-brand-700">5 minutes</span>
+          <div className="mt-3 rounded-xl border border-brand-100 bg-brand-gradient-soft px-3.5 py-2.5 text-sm font-semibold text-brand-900 shadow-sm">
+            <span className="text-2xl font-bold tabular-nums text-brand-700">
+              {withinFive}%
+            </span>{" "}
+            <span className="text-slate-700 font-medium">
+              read within 5 minutes
+            </span>
             {withinThirty > withinFive && (
-              <span className="font-normal text-brand-700/80">
-                {" "}
-                · {withinThirty}% within 30 min
-              </span>
+              <div className="mt-0.5 text-xs font-normal text-slate-500">
+                {withinThirty}% within 30 min
+              </div>
             )}
           </div>
           <div className="mt-4 space-y-2">
@@ -454,9 +481,9 @@ function ReadBucketsCard({
                       {c} · {pct}%
                     </span>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <div className="progress-track h-1.5">
                     <div
-                      className="h-full bg-brand-500 transition-all"
+                      className="progress-fill"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -501,17 +528,17 @@ function FunnelBar({
         <span>·</span>
         <span className="text-emerald-700 font-medium">Read {seen}</span>
       </div>
-      <div className="relative h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+      <div className="progress-track">
         <div
           className="absolute inset-y-0 left-0 bg-slate-300"
           style={{ width: `${sentPct}%` }}
         />
         <div
-          className="absolute inset-y-0 left-0 bg-brand-400"
+          className="absolute inset-y-0 left-0 bg-gradient-to-r from-brand-500 to-brand-400"
           style={{ width: `${deliveredPct}%` }}
         />
         <div
-          className="absolute inset-y-0 left-0 bg-emerald-500"
+          className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-[0_0_0_1px_rgba(5,150,105,0.15)]"
           style={{ width: `${seenPct}%` }}
         />
       </div>
