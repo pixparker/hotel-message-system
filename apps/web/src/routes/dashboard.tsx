@@ -6,11 +6,11 @@ import {
   LogOut,
   ArrowRight,
   Eye,
-  CheckCircle2,
   Timer,
   MessageSquare,
   Languages,
   TrendingUp,
+  Sparkles,
 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Page } from "../components/Page.js";
@@ -26,6 +26,14 @@ import { useToast } from "../components/toast.js";
 import { LANGUAGE_LABELS, formatPhoneDisplay } from "@hms/shared";
 import { CheckoutDialog } from "../components/CheckoutDialog.js";
 
+function greetingFor(date = new Date()): string {
+  const h = date.getHours();
+  if (h < 5) return "Good evening";
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export function DashboardPage() {
   const { data: stats } = useDashboardStats();
   const [checkInOpen, setCheckInOpen] = useState(false);
@@ -37,8 +45,9 @@ export function DashboardPage() {
 
   return (
     <Page
-      title="Dashboard"
-      description="Everything you need at a glance."
+      eyebrow={`${greetingFor()} · Reform Hotel front desk`}
+      title="Welcome back."
+      description="Your guests, your messages, your performance — all at a glance."
       actions={
         <>
           <button
@@ -61,7 +70,7 @@ export function DashboardPage() {
         <StatCard
           label="Checked-in guests"
           value={stats?.activeGuests.total ?? 0}
-          hint={`${stats?.activeGuests.byLanguage.length ?? 0} languages`}
+          hint={`${stats?.activeGuests.byLanguage.length ?? 0} languages in-house`}
           icon={MessageSquare}
           tone="brand"
         />
@@ -79,6 +88,7 @@ export function DashboardPage() {
           icon={Eye}
           tone="emerald"
           progress={readRate}
+          hero={readRate >= 90}
         />
         <StatCard
           label="Avg time to read"
@@ -109,6 +119,7 @@ function StatCard({
   icon: Icon,
   tone,
   progress,
+  hero,
 }: {
   label: string;
   value: string | number;
@@ -116,37 +127,44 @@ function StatCard({
   icon: React.ComponentType<{ className?: string }>;
   tone: "brand" | "indigo" | "emerald" | "amber";
   progress?: number;
+  hero?: boolean;
 }) {
   const toneMap = {
-    brand: "bg-brand-50 text-brand-700",
-    indigo: "bg-indigo-50 text-indigo-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    amber: "bg-amber-50 text-amber-700",
+    brand: "bg-brand-50 text-brand-700 ring-brand-100",
+    indigo: "bg-indigo-50 text-indigo-700 ring-indigo-100",
+    emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    amber: "bg-accent-50 text-accent-700 ring-accent-100",
   };
   const barMap = {
-    brand: "bg-brand-500",
-    indigo: "bg-indigo-500",
-    emerald: "bg-emerald-500",
-    amber: "bg-amber-500",
+    brand: "from-brand-500 to-brand-400",
+    indigo: "from-indigo-500 to-indigo-400",
+    emerald: "from-emerald-500 to-emerald-400",
+    amber: "from-accent-500 to-accent-400",
   };
   return (
-    <div className="card p-5">
+    <div
+      className={`card p-5 transition hover:shadow-lift hover:-translate-y-[1px] ${
+        hero ? "ring-1 ring-brand-200/60 bg-brand-gradient-soft" : ""
+      }`}
+    >
       <div className="flex items-start justify-between">
-        <div className="text-sm font-medium text-slate-500">{label}</div>
+        <div className="text-[13px] font-medium text-slate-500">{label}</div>
         <div
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${toneMap[tone]}`}
+          className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ring-1 ${toneMap[tone]}`}
         >
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <div className="mt-3 text-3xl font-semibold tabular-nums text-slate-900">
+      <div
+        className={`mt-4 ${hero ? "metric-hero" : "metric-xl"}`}
+      >
         {value}
       </div>
-      <div className="mt-1 text-xs text-slate-500">{hint}</div>
+      <div className="mt-1.5 text-xs text-slate-500">{hint}</div>
       {progress !== undefined && (
-        <div className="mt-3 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+        <div className="progress-track mt-3">
           <div
-            className={`h-full ${barMap[tone]} transition-all`}
+            className={`progress-fill bg-gradient-to-r ${barMap[tone]}`}
             style={{ width: `${Math.min(100, progress)}%` }}
           />
         </div>
@@ -165,7 +183,7 @@ function LanguageMixCard({
   if (total === 0) {
     return (
       <div className="card p-5 lg:col-span-1">
-        <div className="flex items-center gap-2 text-sm font-semibold">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <Languages className="h-4 w-4 text-brand-600" />
           Language mix
         </div>
@@ -178,7 +196,7 @@ function LanguageMixCard({
   const sorted = [...entries].sort((a, b) => b.count - a.count);
   return (
     <div className="card p-5 lg:col-span-1">
-      <div className="flex items-center gap-2 text-sm font-semibold">
+      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
         <Languages className="h-4 w-4 text-brand-600" />
         Language mix
       </div>
@@ -196,9 +214,9 @@ function LanguageMixCard({
                   {e.count} · {pct}%
                 </span>
               </div>
-              <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div className="progress-track">
                 <div
-                  className="h-full bg-brand-500 transition-all"
+                  className="progress-fill"
                   style={{ width: `${pct}%` }}
                 />
               </div>
@@ -227,20 +245,23 @@ function RecentCampaignsCard({
   return (
     <div className="card p-5 lg:col-span-2">
       <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-semibold">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <TrendingUp className="h-4 w-4 text-brand-600" />
           Recent campaigns
         </div>
         <Link
           to="/reports"
-          className="text-xs font-medium text-brand-700 hover:text-brand-900"
+          className="text-xs font-semibold text-brand-700 hover:text-brand-900"
         >
           View all →
         </Link>
       </div>
       {campaigns.length === 0 ? (
-        <div className="text-sm text-slate-400">
-          Your first campaign will show up here.
+        <div className="rounded-xl bg-surface-50 p-6 text-center">
+          <Sparkles className="mx-auto h-5 w-5 text-brand-500" />
+          <div className="mt-2 text-sm text-slate-500">
+            Your first campaign will show up here.
+          </div>
         </div>
       ) : (
         <ul className="divide-y divide-slate-100">
@@ -250,32 +271,37 @@ function RecentCampaignsCard({
               <li key={c.id}>
                 <Link
                   to={`/campaigns/${c.id}`}
-                  className="flex items-center gap-4 py-3 rounded-lg hover:bg-slate-50 px-2 -mx-2"
+                  className="flex items-center gap-4 py-3 rounded-lg hover:bg-surface-50 px-2 -mx-2 transition"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{c.title}</div>
+                    <div className="font-medium truncate text-slate-900">
+                      {c.title}
+                    </div>
                     <div className="mt-0.5 text-xs text-slate-500">
                       {new Date(c.createdAt).toLocaleString()}
                     </div>
                   </div>
-                  <div className="hidden md:block w-28">
-                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="hidden md:block w-32">
+                    <div className="progress-track h-1.5">
                       <div
-                        className="h-full bg-emerald-500"
+                        className="progress-fill bg-gradient-to-r from-emerald-500 to-emerald-400"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
                     <div className="mt-1 text-xs text-slate-500 tabular-nums">
-                      {c.seen}/{c.queued} read · {pct}%
+                      <span className="font-semibold text-slate-700">
+                        {pct}%
+                      </span>{" "}
+                      · {c.seen}/{c.queued} read
                     </div>
                   </div>
                   <span
                     className={
                       c.status === "done"
-                        ? "badge bg-emerald-100 text-emerald-700"
+                        ? "badge bg-emerald-100 text-emerald-800 ring-1 ring-inset ring-emerald-200"
                         : c.status === "sending"
-                          ? "badge bg-amber-100 text-amber-700"
-                          : "badge bg-slate-100 text-slate-600"
+                          ? "badge bg-accent-100 text-accent-800 ring-1 ring-inset ring-accent-200"
+                          : "badge bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200"
                     }
                   >
                     {c.status}
@@ -301,10 +327,16 @@ function ActiveGuestsCard() {
     <>
       <div className="mt-6 card overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div className="text-sm font-semibold">Currently checked-in</div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-200" />
+            Currently in-house
+            <span className="ml-1 rounded-full bg-surface-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+              {guests.length}
+            </span>
+          </div>
           <Link
             to="/guests"
-            className="text-xs font-medium text-brand-700 hover:text-brand-900"
+            className="text-xs font-semibold text-brand-700 hover:text-brand-900"
           >
             Manage all →
           </Link>
@@ -313,19 +345,27 @@ function ActiveGuestsCard() {
           {guests.slice(0, 6).map((g: Guest) => (
             <li
               key={g.id}
-              className="flex items-center justify-between px-5 py-3"
+              className="flex items-center justify-between px-5 py-3 hover:bg-surface-50 transition"
             >
-              <div className="min-w-0">
-                <div className="font-medium truncate">{g.name}</div>
-                <div className="text-xs text-slate-500 tabular-nums">
-                  {g.roomNumber && (
-                    <span className="text-indigo-600 font-medium">
-                      Room {g.roomNumber} ·{" "}
-                    </span>
-                  )}
-                  {formatPhoneDisplay(g.phoneE164)} ·{" "}
-                  {LANGUAGE_LABELS[g.language as keyof typeof LANGUAGE_LABELS] ??
-                    g.language}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient-soft text-brand-700 ring-1 ring-brand-100 text-sm font-semibold">
+                  {g.name.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-medium truncate text-slate-900">
+                    {g.name}
+                  </div>
+                  <div className="text-xs text-slate-500 tabular-nums">
+                    {g.roomNumber && (
+                      <span className="text-brand-700 font-semibold">
+                        Room {g.roomNumber} ·{" "}
+                      </span>
+                    )}
+                    {formatPhoneDisplay(g.phoneE164)} ·{" "}
+                    {LANGUAGE_LABELS[
+                      g.language as keyof typeof LANGUAGE_LABELS
+                    ] ?? g.language}
+                  </div>
                 </div>
               </div>
               <button
@@ -390,7 +430,7 @@ function CheckInDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-slate-900/30" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 card p-6">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 card-lift p-6">
           <Dialog.Title className="text-lg font-semibold">
             Check in guest
           </Dialog.Title>

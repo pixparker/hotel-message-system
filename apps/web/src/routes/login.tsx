@@ -43,7 +43,22 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex-1 grid lg:grid-cols-2 min-h-0">
+    <div className="relative flex-1 grid lg:grid-cols-2 min-h-0 overflow-hidden">
+      {/* Mobile-only background: full-bleed hotel image with a brand overlay. */}
+      <div
+        aria-hidden
+        className="lg:hidden absolute inset-0 bg-slate-900 bg-cover bg-center"
+        style={{
+          backgroundImage:
+            "url('https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=1200&q=80')",
+        }}
+      />
+      <div
+        aria-hidden
+        className="lg:hidden absolute inset-0 bg-gradient-to-br from-brand-900/85 via-brand-800/65 to-slate-900/85"
+      />
+
+      {/* Desktop hero — untouched on large screens. */}
       <div
         className="relative hidden lg:flex items-end text-white p-12 overflow-hidden bg-slate-900"
         style={{
@@ -85,10 +100,21 @@ export function LoginPage() {
         </div>
       </div>
 
-      <div className="flex items-center justify-center p-8">
+      <div className="relative z-10 flex flex-col items-center justify-center gap-6 p-4 sm:p-8">
+        {/* Mobile-only brand chip over the image */}
+        <div className="lg:hidden flex items-center gap-3 text-white drop-shadow">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-[0_10px_24px_-8px_rgba(37,211,102,0.65)] ring-1 ring-inset ring-white/20">
+            <WhatsAppIcon className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="text-base font-semibold">Reform Hotel</div>
+            <div className="text-xs text-brand-100/90">WhatsApp guest messaging</div>
+          </div>
+        </div>
+
         <form
           onSubmit={submit}
-          className="card w-full max-w-sm p-8 space-y-5"
+          className="card w-full max-w-sm p-6 sm:p-8 space-y-5 shadow-lift"
           aria-labelledby="login-heading"
         >
           <div>
