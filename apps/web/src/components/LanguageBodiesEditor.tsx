@@ -61,32 +61,34 @@ export function LanguageBodiesEditor({
             <button
               type="button"
               onClick={() => setOpen((p) => ({ ...p, [l]: !p[l] }))}
-              className="flex w-full items-center justify-between gap-2 px-4 py-3 hover:bg-slate-50/60 rounded-t-xl"
+              className="flex w-full items-center gap-2 px-4 py-3 hover:bg-slate-50/60 rounded-t-xl"
               aria-expanded={isOpen}
             >
-              <div className="flex items-center gap-2">
-                <span className="text-lg leading-none">{LANGUAGE_FLAGS[l]}</span>
-                <span className="text-sm font-medium text-slate-800">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="shrink-0 text-lg leading-none">
+                  {LANGUAGE_FLAGS[l]}
+                </span>
+                <span className="shrink-0 text-sm font-medium text-slate-800">
                   {LANGUAGE_LABELS[l]}
                 </span>
                 {filled ? (
-                  <span className="badge bg-emerald-50 text-emerald-700">Filled</span>
+                  <span className="badge shrink-0 bg-emerald-50 text-emerald-700">
+                    Filled
+                  </span>
                 ) : (
-                  <span className="badge bg-slate-100 text-slate-500">Optional</span>
+                  <span className="badge shrink-0 bg-slate-100 text-slate-500">
+                    Optional
+                  </span>
                 )}
                 {filled && !isOpen && (
-                  <span
-                    dir={rtl ? "rtl" : "ltr"}
-                    className="ml-2 text-xs text-slate-500 truncate max-w-[36ch]"
-                  >
-                    {value.replace(/\s+/g, " ").slice(0, 60)}
-                    {value.length > 60 && "…"}
+                  <span className="min-w-0 flex-1 truncate text-left text-xs text-slate-500">
+                    {value.replace(/\s+/g, " ")}
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center gap-3">
                 {filled && (
-                  <span className="text-xs text-slate-400 tabular-nums">
+                  <span className="hidden text-xs tabular-nums text-slate-400 sm:inline">
                     {value.length} chars
                   </span>
                 )}

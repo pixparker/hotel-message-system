@@ -65,7 +65,8 @@ export function CampaignDetailPage() {
       </div>
 
       <div className="card overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Phone</th>
@@ -100,6 +101,7 @@ export function CampaignDetailPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </Page>
   );

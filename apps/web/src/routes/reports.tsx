@@ -230,7 +230,8 @@ export function ReportsPage() {
             {campaigns.length} total
           </div>
         </div>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Campaign</th>
@@ -294,6 +295,7 @@ export function ReportsPage() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </Page>
   );
