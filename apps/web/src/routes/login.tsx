@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MessageCircle, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { WhatsAppIcon } from "../components/WhatsAppIcon.js";
 import { api, ApiError } from "../lib/api.js";
 import { useAuth } from "../state/auth.js";
 import { useToast } from "../components/toast.js";
@@ -42,7 +43,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-full grid lg:grid-cols-2">
+    <div className="flex-1 grid lg:grid-cols-2 min-h-0">
       <div
         className="relative hidden lg:flex items-end text-white p-12 overflow-hidden bg-slate-900"
         style={{
@@ -54,11 +55,14 @@ export function LoginPage() {
       >
         <div className="absolute inset-0 bg-gradient-to-br from-brand-900/85 via-brand-800/70 to-slate-900/85" />
         <div className="relative max-w-md">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15 backdrop-blur">
-              <MessageCircle className="h-5 w-5" />
+          <div className="flex items-center gap-3 mb-8">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#25D366] text-white shadow-md">
+              <WhatsAppIcon className="h-6 w-6" />
             </div>
-            <div className="font-semibold">Reform Hotel</div>
+            <div>
+              <div className="font-semibold">Reform Hotel</div>
+              <div className="text-xs text-brand-100/80">WhatsApp guest messaging</div>
+            </div>
           </div>
           <h2 className="text-4xl font-semibold leading-tight">
             Reach every guest in seconds.

@@ -6,11 +6,11 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  MessageCircle,
   FileText,
 } from "lucide-react";
 import { useAuth } from "../state/auth.js";
 import { cn } from "../lib/cn.js";
+import { WhatsAppIcon } from "./WhatsAppIcon.js";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -25,15 +25,15 @@ export function AppShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   return (
-    <div className="flex min-h-full">
+    <div className="flex flex-1 min-h-0">
       <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
-        <div className="flex items-center gap-2 px-6 py-5 border-b border-slate-100">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">
-            <MessageCircle className="h-5 w-5" />
+        <div className="flex items-center gap-2.5 px-6 py-5 border-b border-slate-100">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#25D366] text-white shadow-sm">
+            <WhatsAppIcon className="h-[22px] w-[22px]" />
           </div>
           <div>
             <div className="text-sm font-semibold">Reform Hotel</div>
-            <div className="text-xs text-slate-500">Guest messaging</div>
+            <div className="text-xs text-slate-500">WhatsApp guest messaging</div>
           </div>
         </div>
         <nav className="flex-1 p-3 space-y-1">

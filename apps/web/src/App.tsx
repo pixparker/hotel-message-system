@@ -21,30 +21,30 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export function App() {
   return (
-    <div className="flex flex-col min-h-full">
+    <div className="flex flex-col h-full">
       <DemoBanner />
-      <div className="flex-1">
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        element={
-          <RequireAuth>
-            <AppShell />
-          </RequireAuth>
-        }
-      >
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/guests" element={<GuestsPage />} />
-        <Route path="/templates" element={<TemplatesPage />} />
-        <Route path="/templates/:id" element={<TemplateEditPage />} />
-        <Route path="/send/*" element={<SendWizardPage />} />
-        <Route path="/campaigns/:id/live" element={<LivePage />} />
-        <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      <div className="flex-1 min-h-0 flex flex-col">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            element={
+              <RequireAuth>
+                <AppShell />
+              </RequireAuth>
+            }
+          >
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/guests" element={<GuestsPage />} />
+            <Route path="/templates" element={<TemplatesPage />} />
+            <Route path="/templates/:id" element={<TemplateEditPage />} />
+            <Route path="/send/*" element={<SendWizardPage />} />
+            <Route path="/campaigns/:id/live" element={<LivePage />} />
+            <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </div>
     </div>
   );
