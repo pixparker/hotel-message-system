@@ -110,8 +110,13 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Scope**: Migration [0006_audit_events.sql](../../packages/db/migrations/0006_audit_events.sql) creates `audit_events` (orgId, userId, action, target, metadata jsonb, ip, user_agent, created_at) with RLS tenant isolation and a `audit_log_event` SECURITY DEFINER helper for pre-tenant writes. [apps/api/src/audit.ts](../../apps/api/src/audit.ts) exposes a non-throwing `auditLog()` helper + `auditContext(c)` extractor. Wired into: `auth.login` (success), `auth.login_failed` (bad email/password), `auth.register`, `campaign.create`, `settings.update` (logs changed keys, not values — redacts secrets). New admin-only `GET /api/audit?limit=50&action=foo` endpoint at [apps/api/src/routes/audit.ts](../../apps/api/src/routes/audit.ts). Done early so Tasks 11-13 write events from the start.
 **Expectation**: an admin can answer "who sent campaign X?" from one query.
 
-### 15. [ ] Test suite + CI
-**Scope**: Vitest unit coverage for schemas, template renderer, phone normalization, driver contracts. Integration tests against testcontainers Postgres for auth, RLS isolation, campaign send with mock driver. One Playwright smoke: login → create campaign → see delivered. GitHub Actions workflow: lint + typecheck + test + build on PR; deploy on main.
+### 15. [~] Test suite + CI
+**Scope**: Vitest unit tests for:
+- `packages/shared/src/phone.test.ts` — normalizePhone/isValidPhone/formatPhoneDisplay (9 tests)
+- `packages/shared/src/schemas.test.ts` — loginSchema, registerSchema, resetPasswordSchema, waConfigSchema, settingsUpdateSchema, guestCreateSchema (9 tests)
+- `apps/api/src/crypto.test.ts` — encrypt/decrypt round-trip, IV randomness, utf-8, plaintext fallback, isEncrypted detection (6 tests)
+24 tests passing locally. [apps/api/vitest.setup.ts](../../apps/api/vitest.setup.ts) stubs env for modules that validate at load-time. New GitHub Actions workflow [.github/workflows/ci.yml](../../.github/workflows/ci.yml) runs typecheck → db:migrate (with ephemeral pg+redis services) → test → build on every push/PR.
+**Follow-up deferred (still marked `~`)**: integration tests against testcontainers Postgres (the RLS negative test with a non-owner app role is the critical gap); Playwright smoke test. Both are explicit in the original scope but require more infra than a single commit; these land as a follow-up PR.
 **Expectation**: CI runs under 10 min; RLS negative test is green; Playwright smoke is green against ephemeral stack.
 
 ---

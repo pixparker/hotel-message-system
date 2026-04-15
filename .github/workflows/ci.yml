@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: hms
+          POSTGRES_PASSWORD: hms
+          POSTGRES_DB: hms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://hms:hms@localhost:5432/hms
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ${{ secrets.CI_JWT_ACCESS_SECRET || 'ci-access-secret-at-least-32-chars-long-for-validation' }}
+      JWT_REFRESH_SECRET: ${{ secrets.CI_JWT_REFRESH_SECRET || 'ci-refresh-secret-different-from-access-32-chars' }}
+      SECRETS_ENCRYPTION_KEY: ${{ secrets.CI_SECRETS_ENCRYPTION_KEY || 'ci-encryption-key-at-least-32-chars-long-xxxx' }}
+      API_PUBLIC_URL: http://localhost:4000
+      WEB_ORIGIN: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile=false
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Migrate database
+        run: pnpm db:migrate
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
