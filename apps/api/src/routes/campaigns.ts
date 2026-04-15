@@ -124,6 +124,8 @@ export const campaignRoutes = new Hono()
             language: rendered.language,
             renderedBody: rendered.body,
             status: "queued" as const,
+            // Unique per (org, campaign, guest) so retries can't double-send.
+            idempotencyKey: `${campaign!.id}:${g.id}`,
           };
         }),
       )
@@ -189,6 +191,8 @@ export const campaignRoutes = new Hono()
         language: rendered.language,
         renderedBody: rendered.body,
         status: "queued",
+        // Test sends have no guest; use the campaign id (test campaigns are single-message).
+        idempotencyKey: `test:${campaign!.id}`,
       })
       .returning();
 

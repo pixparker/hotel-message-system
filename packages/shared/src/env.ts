@@ -52,6 +52,9 @@ const serverEnvObject = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().email().default("noreply@example.com"),
 
+  // Per-org throttle in the worker (derived from Meta tier; defaults to tier 1).
+  WORKER_ORG_MSGS_PER_MINUTE: z.coerce.number().int().positive().default(80),
+
   BOOTSTRAP_ORG_NAME: z.string().optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).optional(),

@@ -150,6 +150,7 @@ export const messages = pgTable(
     language: text("language").notNull(),
     renderedBody: text("rendered_body").notNull(),
     providerMessageId: text("provider_message_id"),
+    idempotencyKey: text("idempotency_key").notNull(),
     status: messageStatus("status").notNull().default("queued"),
     error: text("error"),
     sentAt: timestamp("sent_at", { withTimezone: true }),

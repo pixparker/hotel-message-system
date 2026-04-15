@@ -113,6 +113,22 @@ async function maybeFinalizeCampaign(orgId: string, campaignId: string) {
   }
 }
 
+/**
+ * Per-org token-bucket rate limiter. Each org gets N tokens per window.
+ * Derived from Meta tier in settings (task 12 will wire settings.waConfig.msgsPerSecond);
+ * defaults to 80/min (Meta's Tier 1) when missing.
+ */
+async function acquireOrgToken(orgId: string): Promise<boolean> {
+  const windowSec = 60;
+  const maxPerWindow = Number(env.WORKER_ORG_MSGS_PER_MINUTE ?? 80);
+  const key = `worker:rl:${orgId}`;
+  const count = await connection.incr(key);
+  if (count === 1) {
+    await connection.expire(key, windowSec);
+  }
+  return count <= maxPerWindow;
+}
+
 new Worker(
   "send-message",
   async (job) => {
@@ -129,9 +145,26 @@ new Worker(
       return;
     }
 
+    // Per-org fairness: if the org is over quota, delay this job so other
+    // tenants can make progress. BullMQ will re-enqueue after the delay.
+    const allowed = await acquireOrgToken(orgId);
+    if (!allowed) {
+      // Delay up to 5s with jitter so we don't thundering-herd on the next window.
+      const delay = 1000 + Math.floor(Math.random() * 4000);
+      await job.moveToDelayed(Date.now() + delay, job.token);
+      throw new Error("org_rate_limited"); // re-entrant; BullMQ will retry after delay
+    }
+
     const result = await asTenant(orgId, async (tx) => {
       const [msg] = await tx.select().from(messages).where(eq(messages.id, messageId));
       if (!msg) return { kind: "skip" as const };
+
+      // Idempotency: if the message has already been sent (providerMessageId set
+      // and status != queued), a previous attempt succeeded. Skip re-sending.
+      if (msg.providerMessageId && msg.status !== "queued") {
+        log.info({ messageId, status: msg.status }, "skipping already-sent message (idempotency)");
+        return { kind: "skip" as const };
+      }
 
       const [campaign] = await tx
         .select()

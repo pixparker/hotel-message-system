@@ -78,8 +78,8 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Scope**: Add `templates.externalName`, `templates.approvalStatus` (`draft|pending|approved|rejected`), and a scheduled job that syncs approval status from Meta. UI shows status badge. Campaign create blocks if template is not `approved`.
 **Expectation**: a template submitted in-app shows up in Meta Business Manager; once approved there, in-app status flips within the next sync tick.
 
-### 8. [ ] BullMQ per-org fairness + idempotency
-**Scope**: Worker uses per-org rate limiter (derived from Meta tier in settings). Add `messages.idempotencyKey` (unique on `campaignId + guestId`). Retries never double-send.
+### 8. [x] BullMQ per-org fairness + idempotency
+**Scope**: Migration [0007_messages_idempotency.sql](../../packages/db/migrations/0007_messages_idempotency.sql) adds `messages.idempotency_key` with a unique index on (org_id, idempotency_key). Campaign rows use `{campaignId}:{guestId}`; test sends use `test:{campaignId}`. [apps/worker/src/main.ts](../../apps/worker/src/main.ts) now: (a) checks idempotency pre-send — if `providerMessageId` is set and status != queued, skip; (b) applies a per-org Redis token bucket before every send (`worker:rl:{orgId}`, default 80/min, configurable via `WORKER_ORG_MSGS_PER_MINUTE`). When over quota, the job is delayed 1-5s (with jitter) and re-enqueued so another tenant's work can proceed.
 **Expectation**: forced worker crash mid-campaign resumes without duplicate deliveries; one org's 10k blast doesn't delay another org's test send by more than a few seconds.
 
 ### 9. [ ] Cloud deploy
