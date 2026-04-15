@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { UserPlus, Users, LogOut, Search, BedDouble } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { UserPlus, Users, LogOut, Search, BedDouble, Upload } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Page } from "../components/Page.js";
 import { EmptyState } from "../components/EmptyState.js";
@@ -14,13 +15,16 @@ import { ApiError } from "../lib/api.js";
 import { PhoneInput } from "../components/PhoneInput.js";
 import { LanguagePicker } from "../components/LanguagePicker.js";
 import { CheckoutDialog } from "../components/CheckoutDialog.js";
+import { CsvImportDialog } from "../components/CsvImportDialog.js";
 
 export function GuestsPage() {
   const [filter, setFilter] = useState<"checked_in" | "checked_out">("checked_in");
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [checkoutGuest, setCheckoutGuest] = useState<Guest | null>(null);
   const { data, isLoading } = useGuests(filter);
+  const qc = useQueryClient();
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -38,10 +42,16 @@ export function GuestsPage() {
       title="Guests"
       description="Check guests in, update details, and check out."
       actions={
-        <button className="btn-primary" onClick={() => setOpen(true)}>
-          <UserPlus className="h-4 w-4" />
-          Check in guest
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setImportOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Import CSV
+          </button>
+          <button className="btn-primary" onClick={() => setOpen(true)}>
+            <UserPlus className="h-4 w-4" />
+            Check in guest
+          </button>
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -138,6 +148,11 @@ export function GuestsPage() {
         guest={checkoutGuest}
         open={!!checkoutGuest}
         onOpenChange={(o) => !o && setCheckoutGuest(null)}
+      />
+      <CsvImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImportDone={() => qc.invalidateQueries({ queryKey: ["guests"] })}
       />
     </Page>
   );
