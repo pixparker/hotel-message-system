@@ -1,15 +1,15 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { getDb, users } from "@hms/db";
-import { userUpdateSchema } from "@hms/shared";
-import { requireAuth, currentOrgId } from "../auth.js";
-import { normalizePhone } from "@hms/shared";
-
-const db = getDb();
+import { users } from "@hms/db";
+import { userUpdateSchema, normalizePhone } from "@hms/shared";
+import { requireAuth } from "../auth.js";
+import { withTenant } from "../tenant.js";
 
 export const meRoutes = new Hono()
   .use(requireAuth)
+  .use(withTenant)
   .get("/", async (c) => {
+    const db = c.var.db;
     const auth = c.get("auth");
     const [user] = await db.select().from(users).where(eq(users.id, auth.sub)).limit(1);
     if (!user) return c.json({ error: "not_found" }, 404);
@@ -22,6 +22,7 @@ export const meRoutes = new Hono()
     });
   })
   .patch("/", async (c) => {
+    const db = c.var.db;
     const auth = c.get("auth");
     const body = userUpdateSchema.parse(await c.req.json());
     const testPhone = body.testPhone ? normalizePhone(body.testPhone) : undefined;

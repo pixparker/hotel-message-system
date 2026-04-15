@@ -1,19 +1,20 @@
 import { Hono } from "hono";
 import { and, eq, gte, sql } from "drizzle-orm";
 import {
-  getDb,
   guests,
   campaigns,
   messages,
 } from "@hms/db";
 import { requireAuth, currentOrgId } from "../auth.js";
+import { withTenant } from "../tenant.js";
 
-const db = getDb();
 const DAY = 86400_000;
 
 export const statsRoutes = new Hono()
   .use(requireAuth)
+  .use(withTenant)
   .get("/dashboard", async (c) => {
+    const db = c.var.db;
     const orgId = currentOrgId(c);
     const since7d = new Date(Date.now() - 7 * DAY);
 
@@ -105,6 +106,7 @@ export const statsRoutes = new Hono()
     });
   })
   .get("/reports", async (c) => {
+    const db = c.var.db;
     const orgId = currentOrgId(c);
     const since30d = new Date(Date.now() - 30 * DAY);
 

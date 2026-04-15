@@ -75,16 +75,19 @@ const [welcome] = await db
 await db.insert(templateBodies).values([
   {
     templateId: welcome!.id,
+    orgId: org!.id,
     language: "en",
     body: "Welcome to Reform Hotel! Your Wi-Fi password is GUEST2026. Reception is open 24/7 — just reply to this message if you need anything.",
   },
   {
     templateId: welcome!.id,
+    orgId: org!.id,
     language: "tr",
     body: "Reform Hotel'e hoş geldiniz! Wi-Fi şifreniz: GUEST2026. Her türlü ihtiyacınız için bu mesaja yanıt verebilirsiniz.",
   },
   {
     templateId: welcome!.id,
+    orgId: org!.id,
     language: "fa",
     body: "به هتل Reform خوش آمدید! رمز وای‌فای: GUEST2026. برای هر درخواستی کافیست همین پیام را پاسخ دهید.",
   },
@@ -102,16 +105,19 @@ const [breakfast] = await db
 await db.insert(templateBodies).values([
   {
     templateId: breakfast!.id,
+    orgId: org!.id,
     language: "en",
     body: "Good morning! Breakfast is served in the main restaurant from 07:00 to 10:30. Have a lovely day.",
   },
   {
     templateId: breakfast!.id,
+    orgId: org!.id,
     language: "tr",
     body: "Günaydın! Kahvaltı ana restoranda 07:00-10:30 arasında servis edilmektedir. İyi günler dileriz.",
   },
   {
     templateId: breakfast!.id,
+    orgId: org!.id,
     language: "fa",
     body: "صبح بخیر! صبحانه در رستوران اصلی از ساعت ۷:۰۰ تا ۱۰:۳۰ سرو می‌شود. روز خوبی داشته باشید.",
   },

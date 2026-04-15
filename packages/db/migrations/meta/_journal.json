@@ -22,6 +22,13 @@
       "when": 1776178950447,
       "tag": "0002_flippant_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776240000000,
+      "tag": "0003_rls_tenant_isolation",
+      "breakpoints": true
     }
   ]
 }

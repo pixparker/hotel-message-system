@@ -93,6 +93,9 @@ export const templateBodies = pgTable(
     templateId: uuid("template_id")
       .notNull()
       .references(() => templates.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
     language: text("language").notNull(),
     body: text("body").notNull(),
   },
@@ -135,6 +138,9 @@ export const messages = pgTable(
   "messages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
     campaignId: uuid("campaign_id")
       .notNull()
       .references(() => campaigns.id, { onDelete: "cascade" }),
@@ -152,6 +158,7 @@ export const messages = pgTable(
   (t) => ({
     campaignIdx: index("messages_campaign_idx").on(t.campaignId),
     providerIdx: index("messages_provider_idx").on(t.providerMessageId),
+    orgIdx: index("messages_org_idx").on(t.orgId),
   }),
 );
 

@@ -1,15 +1,16 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { and, eq } from "drizzle-orm";
-import { getDb, campaigns } from "@hms/db";
+import { campaigns } from "@hms/db";
 import { requireAuth, currentOrgId } from "../auth.js";
+import { withTenant } from "../tenant.js";
 import { subRedis, campaignChannel } from "../redis.js";
-
-const db = getDb();
 
 export const sseRoutes = new Hono()
   .use(requireAuth)
+  .use(withTenant)
   .get("/campaigns/:id/events", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const [campaign] = await db

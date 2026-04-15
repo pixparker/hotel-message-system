@@ -1,12 +1,10 @@
 import { Hono } from "hono";
 import { and, eq, desc } from "drizzle-orm";
 import {
-  getDb,
   campaigns,
   messages,
   guests,
   templates,
-  templateBodies,
   organizations,
 } from "@hms/db";
 import {
@@ -16,11 +14,11 @@ import {
   normalizePhone,
 } from "@hms/shared";
 import { requireAuth, currentOrgId } from "../auth.js";
+import { withTenant, type TenantDb } from "../tenant.js";
 import { sendMessageQueue } from "../redis.js";
 
-const db = getDb();
-
 async function resolveBodies(
+  db: TenantDb,
   orgId: string,
   input: { templateId?: string; customBodies?: Record<string, string> },
 ): Promise<Record<string, string>> {
@@ -38,7 +36,9 @@ async function resolveBodies(
 
 export const campaignRoutes = new Hono()
   .use(requireAuth)
+  .use(withTenant)
   .get("/", async (c) => {
+    const db = c.var.db;
     const orgId = currentOrgId(c);
     const rows = await db
       .select()
@@ -49,6 +49,7 @@ export const campaignRoutes = new Hono()
     return c.json(rows);
   })
   .get("/:id", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const campaign = await db.query.campaigns.findFirst({
@@ -62,10 +63,11 @@ export const campaignRoutes = new Hono()
     return c.json({ ...campaign, messages: rows });
   })
   .post("/", async (c) => {
+    const db = c.var.db;
     const auth = c.get("auth");
     const orgId = currentOrgId(c);
     const body = campaignCreateSchema.parse(await c.req.json());
-    const bodies = await resolveBodies(orgId, body);
+    const bodies = await resolveBodies(db, orgId, body);
 
     const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
     const fallback = org?.defaultLanguage ?? "en";
@@ -100,6 +102,7 @@ export const campaignRoutes = new Hono()
         recipients.map((g) => {
           const rendered = renderForGuest(bodies, g, fallback);
           return {
+            orgId,
             campaignId: campaign!.id,
             guestId: g.id,
             phoneE164: g.phoneE164,
@@ -114,7 +117,7 @@ export const campaignRoutes = new Hono()
     await sendMessageQueue.addBulk(
       messageRows.map((m) => ({
         name: "send",
-        data: { messageId: m.id, campaignId: campaign!.id },
+        data: { messageId: m.id, campaignId: campaign!.id, orgId },
         opts: { attempts: 3, backoff: { type: "exponential", delay: 2000 } },
       })),
     );
@@ -122,10 +125,11 @@ export const campaignRoutes = new Hono()
     return c.json(campaign, 201);
   })
   .post("/test", async (c) => {
+    const db = c.var.db;
     const auth = c.get("auth");
     const orgId = currentOrgId(c);
     const body = testMessageSchema.parse(await c.req.json());
-    const bodies = await resolveBodies(orgId, body);
+    const bodies = await resolveBodies(db, orgId, body);
     const phoneE164 = normalizePhone(body.phone);
 
     const rendered = renderForGuest(
@@ -153,6 +157,7 @@ export const campaignRoutes = new Hono()
     const [msg] = await db
       .insert(messages)
       .values({
+        orgId,
         campaignId: campaign!.id,
         phoneE164,
         language: rendered.language,
@@ -163,13 +168,14 @@ export const campaignRoutes = new Hono()
 
     await sendMessageQueue.add(
       "send",
-      { messageId: msg!.id, campaignId: campaign!.id },
+      { messageId: msg!.id, campaignId: campaign!.id, orgId },
       { attempts: 3 },
     );
 
     return c.json({ campaignId: campaign!.id, messageId: msg!.id }, 201);
   })
   .post("/:id/cancel", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const [row] = await db

@@ -1,24 +1,33 @@
 import { Hono } from "hono";
 import bcrypt from "bcryptjs";
-import { eq, and } from "drizzle-orm";
-import { getDb, users } from "@hms/db";
+import { sql } from "drizzle-orm";
+import { getDb } from "@hms/db";
 import { loginSchema } from "@hms/shared";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../auth.js";
 
 const db = getDb();
 
+type AuthUserRow = {
+  id: string;
+  org_id: string;
+  email: string;
+  password_hash: string;
+  role: "admin" | "staff";
+  test_phone: string | null;
+};
+
 export const authRoutes = new Hono()
   .post("/login", async (c) => {
     const body = loginSchema.parse(await c.req.json());
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, body.email.toLowerCase()))
-      .limit(1);
+    // RLS-bypassing SECURITY DEFINER function — login has no tenant context yet.
+    const rows = (await db.execute(
+      sql`SELECT * FROM auth_find_user_by_email(${body.email.toLowerCase()})`,
+    )) as unknown as AuthUserRow[];
+    const user = rows[0];
     if (!user) return c.json({ error: "invalid_credentials" }, 401);
-    const ok = await bcrypt.compare(body.password, user.passwordHash);
+    const ok = await bcrypt.compare(body.password, user.password_hash);
     if (!ok) return c.json({ error: "invalid_credentials" }, 401);
-    const claims = { sub: user.id, orgId: user.orgId, role: user.role };
+    const claims = { sub: user.id, orgId: user.org_id, role: user.role };
     const [accessToken, refreshToken] = await Promise.all([
       signAccessToken(claims),
       signRefreshToken(claims),
@@ -26,7 +35,7 @@ export const authRoutes = new Hono()
     return c.json({
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, role: user.role, testPhone: user.testPhone },
+      user: { id: user.id, email: user.email, role: user.role, testPhone: user.test_phone },
     });
   })
   .post("/refresh", async (c) => {

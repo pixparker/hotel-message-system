@@ -1,16 +1,17 @@
 import { Hono } from "hono";
 import { and, eq, desc } from "drizzle-orm";
-import { getDb, guests } from "@hms/db";
+import { guests } from "@hms/db";
 import { guestCreateSchema, guestUpdateSchema, normalizePhone } from "@hms/shared";
 import { requireAuth, currentOrgId } from "../auth.js";
-
-const db = getDb();
+import { withTenant } from "../tenant.js";
 
 export const guestRoutes = new Hono()
   .use(requireAuth)
+  .use(withTenant)
   .get("/", async (c) => {
-    const status = c.req.query("status") as "checked_in" | "checked_out" | undefined;
+    const db = c.var.db;
     const orgId = currentOrgId(c);
+    const status = c.req.query("status") as "checked_in" | "checked_out" | undefined;
     const rows = await db
       .select()
       .from(guests)
@@ -23,6 +24,7 @@ export const guestRoutes = new Hono()
     return c.json(rows);
   })
   .post("/", async (c) => {
+    const db = c.var.db;
     const body = guestCreateSchema.parse(await c.req.json());
     const orgId = currentOrgId(c);
     const phoneE164 = normalizePhone(body.phone);
@@ -40,6 +42,7 @@ export const guestRoutes = new Hono()
     return c.json(row, 201);
   })
   .patch("/:id", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const body = guestUpdateSchema.parse(await c.req.json());
@@ -58,6 +61,7 @@ export const guestRoutes = new Hono()
     return c.json(row);
   })
   .post("/:id/checkout", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const [row] = await db
@@ -69,6 +73,7 @@ export const guestRoutes = new Hono()
     return c.json(row);
   })
   .post("/:id/checkin", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const [row] = await db

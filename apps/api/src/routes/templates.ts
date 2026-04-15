@@ -1,14 +1,15 @@
 import { Hono } from "hono";
 import { and, eq, desc } from "drizzle-orm";
-import { getDb, templates, templateBodies } from "@hms/db";
+import { templates, templateBodies } from "@hms/db";
 import { templateCreateSchema } from "@hms/shared";
 import { requireAuth, currentOrgId } from "../auth.js";
-
-const db = getDb();
+import { withTenant } from "../tenant.js";
 
 export const templateRoutes = new Hono()
   .use(requireAuth)
+  .use(withTenant)
   .get("/", async (c) => {
+    const db = c.var.db;
     const orgId = currentOrgId(c);
     const rows = await db.query.templates.findMany({
       where: eq(templates.orgId, orgId),
@@ -18,6 +19,7 @@ export const templateRoutes = new Hono()
     return c.json(rows);
   })
   .get("/:id", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const row = await db.query.templates.findFirst({
@@ -28,6 +30,7 @@ export const templateRoutes = new Hono()
     return c.json(row);
   })
   .post("/", async (c) => {
+    const db = c.var.db;
     const body = templateCreateSchema.parse(await c.req.json());
     const orgId = currentOrgId(c);
     const [tpl] = await db
@@ -37,6 +40,7 @@ export const templateRoutes = new Hono()
     await db.insert(templateBodies).values(
       body.bodies.map((b) => ({
         templateId: tpl!.id,
+        orgId,
         language: b.language,
         body: b.body,
       })),
@@ -48,6 +52,7 @@ export const templateRoutes = new Hono()
     return c.json(full, 201);
   })
   .patch("/:id", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const body = templateCreateSchema.parse(await c.req.json());
@@ -66,6 +71,7 @@ export const templateRoutes = new Hono()
     await db.insert(templateBodies).values(
       body.bodies.map((b) => ({
         templateId: id,
+        orgId,
         language: b.language,
         body: b.body,
       })),
@@ -77,6 +83,7 @@ export const templateRoutes = new Hono()
     return c.json(full);
   })
   .delete("/:id", async (c) => {
+    const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);
     const deleted = await db

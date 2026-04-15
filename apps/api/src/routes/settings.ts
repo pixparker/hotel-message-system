@@ -1,19 +1,21 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { getDb, settings } from "@hms/db";
+import { settings } from "@hms/db";
 import { settingsUpdateSchema, normalizePhone } from "@hms/shared";
 import { requireAuth, currentOrgId } from "../auth.js";
-
-const db = getDb();
+import { withTenant } from "../tenant.js";
 
 export const settingsRoutes = new Hono()
   .use(requireAuth)
+  .use(withTenant)
   .get("/", async (c) => {
+    const db = c.var.db;
     const orgId = currentOrgId(c);
     const [row] = await db.select().from(settings).where(eq(settings.orgId, orgId));
     return c.json(row ?? null);
   })
   .patch("/", async (c) => {
+    const db = c.var.db;
     const orgId = currentOrgId(c);
     if (c.get("auth").role !== "admin") {
       return c.json({ error: "forbidden" }, 403);
