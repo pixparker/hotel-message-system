@@ -8,6 +8,7 @@ import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../auth.j
 import { env } from "../env.js";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../mailer.js";
 import { rateLimit, clientIp } from "../rate-limit.js";
+import { auditLog, auditContext } from "../audit.js";
 
 const db = getDb();
 
@@ -101,6 +102,17 @@ export const authRoutes = new Hono()
       const verifyUrl = `${env.WEB_ORIGIN}/verify-email?token=${verifyToken}`;
       await sendVerificationEmail(user.email, verifyUrl);
 
+      const ctx = auditContext(c);
+      await auditLog({
+        orgId: org.id,
+        userId: user.id,
+        action: "auth.register",
+        target: user.id,
+        metadata: { email: user.email, orgName: body.orgName },
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+
       return c.json({ message: "check your email to verify your account" }, 201);
     } catch (err) {
       const message = err instanceof Error ? err.message : "registration failed";
@@ -189,16 +201,36 @@ export const authRoutes = new Hono()
   .post("/login", async (c) => {
     try {
       const body = loginSchema.parse(await c.req.json());
+      const ctx = auditContext(c);
 
       // RLS-bypassing SECURITY DEFINER function — login has no tenant context yet.
       const rows = (await db.execute(
         sql`SELECT * FROM auth_find_user_by_email(${body.email.toLowerCase()})`,
       )) as unknown as AuthUserRow[];
       const user = rows[0];
-      if (!user) return c.json({ error: "invalid_credentials" }, 401);
+      if (!user) {
+        await auditLog({
+          action: "auth.login_failed",
+          metadata: { email: body.email, reason: "unknown_email" },
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        });
+        return c.json({ error: "invalid_credentials" }, 401);
+      }
 
       const ok = await bcrypt.compare(body.password, user.password_hash);
-      if (!ok) return c.json({ error: "invalid_credentials" }, 401);
+      if (!ok) {
+        await auditLog({
+          orgId: user.org_id,
+          userId: user.id,
+          action: "auth.login_failed",
+          target: user.id,
+          metadata: { email: user.email, reason: "bad_password" },
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        });
+        return c.json({ error: "invalid_credentials" }, 401);
+      }
 
       // Generate jti (JWT ID) for this refresh token session
       const jti = crypto.randomUUID();
@@ -224,6 +256,15 @@ export const authRoutes = new Hono()
         userId: user.id,
         orgId: user.org_id,
         expiresAt,
+      });
+
+      await auditLog({
+        orgId: user.org_id,
+        userId: user.id,
+        action: "auth.login",
+        target: user.id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
       });
 
       return c.json({

@@ -14,6 +14,7 @@ import { sseRoutes } from "./routes/sse.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { statsRoutes } from "./routes/stats.js";
+import { auditRoutes } from "./routes/audit.js";
 
 const app = new Hono();
 
@@ -37,6 +38,7 @@ app.route("/api/campaigns", campaignRoutes);
 app.route("/api/settings", settingsRoutes);
 app.route("/api/stats", statsRoutes);
 app.route("/api/webhooks", webhookRoutes);
+app.route("/api/audit", auditRoutes);
 app.route("/api", sseRoutes); // mounts /campaigns/:id/events
 
 app.onError(handleError);

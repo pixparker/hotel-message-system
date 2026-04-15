@@ -232,6 +232,25 @@ export const passwordResetTokens = pgTable(
   },
 );
 
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    target: text("target"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgCreatedIdx: index("audit_events_org_created_idx").on(t.orgId, t.createdAt),
+    actionIdx: index("audit_events_action_idx").on(t.action),
+  }),
+);
+
 export const organizationsRelations = relations(organizations, ({ many, one }) => ({
   users: many(users),
   guests: many(guests),

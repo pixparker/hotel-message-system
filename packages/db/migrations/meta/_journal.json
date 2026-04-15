@@ -43,6 +43,13 @@
       "when": 1776415200000,
       "tag": "0005_webhook_signature_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776501600000,
+      "tag": "0006_audit_events",
+      "breakpoints": true
     }
   ]
 }

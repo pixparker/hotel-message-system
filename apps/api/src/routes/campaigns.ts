@@ -17,6 +17,7 @@ import { requireAuth, requireVerified, currentOrgId } from "../auth.js";
 import { withTenant, type TenantDb } from "../tenant.js";
 import { sendMessageQueue } from "../redis.js";
 import { rateLimit } from "../rate-limit.js";
+import { auditLog, auditContext } from "../audit.js";
 
 // Per-org limiter: prevents one tenant from flooding the queue at the expense of others.
 const campaignLimiter = rateLimit({
@@ -135,6 +136,17 @@ export const campaignRoutes = new Hono()
         opts: { attempts: 3, backoff: { type: "exponential", delay: 2000 } },
       })),
     );
+
+    const ctx = auditContext(c);
+    await auditLog({
+      orgId,
+      userId: auth.sub,
+      action: "campaign.create",
+      target: campaign!.id,
+      metadata: { title: body.title, recipientCount: recipients.length },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
 
     return c.json(campaign, 201);
   })

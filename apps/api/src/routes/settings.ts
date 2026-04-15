@@ -4,6 +4,7 @@ import { settings } from "@hms/db";
 import { settingsUpdateSchema, normalizePhone } from "@hms/shared";
 import { requireAuth, currentOrgId } from "../auth.js";
 import { withTenant } from "../tenant.js";
+import { auditLog, auditContext } from "../audit.js";
 
 export const settingsRoutes = new Hono()
   .use(requireAuth)
@@ -32,5 +33,20 @@ export const settingsRoutes = new Hono()
       .set(patch)
       .where(eq(settings.orgId, orgId))
       .returning();
+
+    const ctx = auditContext(c);
+    // Audit without leaking the appSecret: only record which keys changed.
+    const changedKeys = Object.keys(body).filter((k) => k !== "waConfig");
+    if (body.waConfig) changedKeys.push("waConfig.*");
+    await auditLog({
+      orgId,
+      userId: c.get("auth").sub,
+      action: "settings.update",
+      target: orgId,
+      metadata: { changedKeys },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
     return c.json(row);
   });

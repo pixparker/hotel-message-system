@@ -111,8 +111,8 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Scope**: Upload → preview (dry-run) → validation report (phone normalization, dup detection, row errors) → confirm → import. Background job for >1k rows.
 **Expectation**: a 5k-row CSV imports without blocking the UI and reports bad rows precisely.
 
-### 14. [ ] Audit log
-**Scope**: `audit_events` table (orgId, userId, action, target, metadata, ip, ua, ts). Write on login, signup, campaign create/send, settings change, guest import/export, user invite.
+### 14. [x] Audit log
+**Scope**: Migration [0006_audit_events.sql](../../packages/db/migrations/0006_audit_events.sql) creates `audit_events` (orgId, userId, action, target, metadata jsonb, ip, user_agent, created_at) with RLS tenant isolation and a `audit_log_event` SECURITY DEFINER helper for pre-tenant writes. [apps/api/src/audit.ts](../../apps/api/src/audit.ts) exposes a non-throwing `auditLog()` helper + `auditContext(c)` extractor. Wired into: `auth.login` (success), `auth.login_failed` (bad email/password), `auth.register`, `campaign.create`, `settings.update` (logs changed keys, not values — redacts secrets). New admin-only `GET /api/audit?limit=50&action=foo` endpoint at [apps/api/src/routes/audit.ts](../../apps/api/src/routes/audit.ts). Done early so Tasks 11-13 write events from the start.
 **Expectation**: an admin can answer "who sent campaign X?" from one query.
 
 ### 15. [ ] Test suite + CI
