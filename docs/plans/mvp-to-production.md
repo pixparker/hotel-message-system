@@ -82,8 +82,9 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Scope**: Migration [0007_messages_idempotency.sql](../../packages/db/migrations/0007_messages_idempotency.sql) adds `messages.idempotency_key` with a unique index on (org_id, idempotency_key). Campaign rows use `{campaignId}:{guestId}`; test sends use `test:{campaignId}`. [apps/worker/src/main.ts](../../apps/worker/src/main.ts) now: (a) checks idempotency pre-send — if `providerMessageId` is set and status != queued, skip; (b) applies a per-org Redis token bucket before every send (`worker:rl:{orgId}`, default 80/min, configurable via `WORKER_ORG_MSGS_PER_MINUTE`). When over quota, the job is delayed 1-5s (with jitter) and re-enqueued so another tenant's work can proceed.
 **Expectation**: forced worker crash mid-campaign resumes without duplicate deliveries; one org's 10k blast doesn't delay another org's test send by more than a few seconds.
 
-### 9. [ ] Cloud deploy
-**Scope**: Fly apps for api + worker (`fly.api.toml`, `fly.worker.toml`), Neon Postgres (prod + staging branches), Upstash Redis. Vercel web in non-demo mode pointing at `api.<domain>`. Migration runs as Fly release task. Drop Caddy from prod (Fly handles TLS); keep compose for local dev only.
+### 9. [~] Cloud deploy
+**Scope**: Fly config files written: [deploy/fly.api.toml](../../deploy/fly.api.toml) (release-task migration, `/health` check, auto-stop, shared-cpu-1x) and [deploy/fly.worker.toml](../../deploy/fly.worker.toml) (no HTTP, rolling). Runbook at [docs/runbook/cloud-deploy.md](../runbook/cloud-deploy.md) covers: Neon setup (pooled vs unpooled URLs), Upstash, Fly secrets, Vercel prod project config, release-task pattern, rollback paths (code vs DB), domain wiring, dropping Caddy. Key constraint documented: `SECRETS_ENCRYPTION_KEY` must match between api and worker or worker can't decrypt tokens. Vercel config keeps existing `vercel.json` for the public demo; prod uses a second Vercel project with `VITE_API_URL` set via the dashboard.
+**Follow-up deferred (`~`)**: actual account creation + first deploy requires operator credentials I can't provision.
 **Expectation**: push to main deploys api+worker to Fly and web to Vercel; rollback path documented.
 
 ### 10. [ ] Observability baseline

@@ -1,0 +1,26 @@
+# Fly.io config for the BullMQ worker.
+# No inbound HTTP (no http_service block) — health is proven by logs +
+# BullMQ queue depth (see Task 17).
+
+app = "hms-worker"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile.worker"
+
+[env]
+  NODE_ENV = "production"
+  LOG_LEVEL = "info"
+  # WORKER_ORG_MSGS_PER_MINUTE set via `fly secrets` per environment.
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[deploy]
+  # Workers are stateless and idempotent; rolling is safe.
+  strategy = "rolling"
+
+[processes]
+  app = "node dist/main.js"

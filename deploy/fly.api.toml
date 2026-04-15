@@ -1,0 +1,43 @@
+# Fly.io config for the API.
+# Deploy: `fly deploy -c deploy/fly.api.toml --dockerfile deploy/Dockerfile.api`.
+# Secrets: `fly secrets set -c deploy/fly.api.toml KEY=VALUE` (DATABASE_URL,
+# REDIS_URL, JWT_*, SECRETS_ENCRYPTION_KEY, RESEND_API_KEY, EMAIL_FROM,
+# WA_CLOUD_VERIFY_TOKEN).
+
+app = "hms-api"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile.api"
+
+[deploy]
+  # Migrations run as a Fly release task so old pods don't see a new schema
+  # and new pods don't see an old one. Fails the deploy if migrate fails.
+  release_command = "pnpm db:migrate"
+
+[env]
+  NODE_ENV = "production"
+  API_PORT = "4000"
+  LOG_LEVEL = "info"
+  # API_PUBLIC_URL and WEB_ORIGIN set via `fly secrets`.
+  WA_PROVIDER = "mock"  # tenants on cloud set this via /settings/whatsapp
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
