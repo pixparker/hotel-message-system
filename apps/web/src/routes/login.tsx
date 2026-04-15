@@ -172,6 +172,12 @@ export function LoginPage() {
               "Sign in"
             )}
           </button>
+          <div className="text-center text-sm text-slate-500">
+            New here?{" "}
+            <Link to="/signup" className="text-slate-700 hover:text-slate-900 font-medium">
+              Create an account
+            </Link>
+          </div>
         </form>
       </div>
     </div>

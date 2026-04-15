@@ -40,6 +40,7 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   logoUrl: text("logo_url"),
   defaultLanguage: text("default_language").notNull().default("en"),
+  onboardingState: jsonb("onboarding_state").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

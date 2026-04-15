@@ -94,13 +94,8 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 
 ## Stage 3 — Onboarding + hardening (week 3)
 
-### 11. [ ] Self-serve signup flow + sample data pack
-**Scope**:
-- `/signup` page → create org + admin user (pending verification) → verify email → land in dashboard with onboarding checklist. Add `organizations.onboardingState` jsonb to drive the checklist UI.
-- Refactor existing hardcoded seed ([packages/db/src/seed.ts](../../packages/db/src/seed.ts)) into a reusable **sample-data fixture** at `packages/db/src/fixtures/sample-hotel.json` (15 guests, 2–3 templates, one past campaign). Used by signup *and* tests.
-- Signup form has an opt-in checkbox: "Populate with sample data so I can explore" — on accept, clone the fixture into the new org. Staff can delete anytime via Settings.
-- Public marketing demo on Vercel (`VITE_DEMO=1`) stays as-is — no-auth, no DB, separate from prod.
-
+### 11. [x] Self-serve signup flow + sample data pack
+**Scope**: Migration [0009_onboarding_state.sql](../../packages/db/migrations/0009_onboarding_state.sql) adds `organizations.onboarding_state` jsonb. Sample fixture at [packages/db/src/fixtures/sample-hotel.ts](../../packages/db/src/fixtures/sample-hotel.ts) — 15 guests, 3 templates (welcome, breakfast reminder, late checkout offer) in EN/TR/FA. `registerSchema` in [packages/shared/src/schemas.ts](../../packages/shared/src/schemas.ts) accepts `populateSampleData: boolean`. `/auth/register` in [apps/api/src/routes/auth.ts](../../apps/api/src/routes/auth.ts) clones the fixture into the new org when the flag is set. New [apps/web/src/routes/signup.tsx](../../apps/web/src/routes/signup.tsx) with form (hotel name, email, password, opt-in sample-data checkbox) → "check your email" confirmation. Added `/signup` route and "Create an account" link on login. Public demo build (`VITE_DEMO=1`) is untouched.
 **Expectation**: a new user can go from landing page to verified dashboard without operator involvement. With the checkbox, they see a populated workspace on first login instead of an empty shell.
 
 ### 12. [ ] Guided WhatsApp connect wizard

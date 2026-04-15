@@ -2,7 +2,20 @@ import { Hono } from "hono";
 import bcrypt from "bcryptjs";
 import { sql } from "drizzle-orm";
 import crypto from "crypto";
-import { getDb, refreshTokens, users, organizations, emailVerificationTokens, passwordResetTokens, settings } from "@hms/db";
+import {
+  getDb,
+  refreshTokens,
+  users,
+  organizations,
+  emailVerificationTokens,
+  passwordResetTokens,
+  settings,
+  guests,
+  templates,
+  templateBodies,
+  SAMPLE_GUESTS,
+  SAMPLE_TEMPLATES,
+} from "@hms/db";
 import { loginSchema, registerSchema, verifyEmailSchema, forgotPasswordSchema, resetPasswordSchema } from "@hms/shared";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../auth.js";
 import { env } from "../env.js";
@@ -88,6 +101,35 @@ export const authRoutes = new Hono()
         waProvider: "mock",
         brandPrimaryColor: "#14a77a",
       });
+
+      // Optionally populate sample data so a new operator sees a non-empty workspace.
+      if (body.populateSampleData) {
+        await db.insert(guests).values(
+          SAMPLE_GUESTS.map((g) => ({
+            orgId: org.id,
+            name: g.name,
+            phoneE164: g.phoneE164,
+            language: g.language,
+            roomNumber: g.roomNumber,
+            status: g.status ?? "checked_in",
+          })),
+        );
+        for (const tpl of SAMPLE_TEMPLATES) {
+          const [tplRow] = await db
+            .insert(templates)
+            .values({ orgId: org.id, name: tpl.name, description: tpl.description })
+            .returning();
+          if (!tplRow) continue;
+          await db.insert(templateBodies).values(
+            tpl.bodies.map((b) => ({
+              templateId: tplRow.id,
+              orgId: org.id,
+              language: b.language,
+              body: b.body,
+            })),
+          );
+        }
+      }
 
       // Create email verification token
       const { raw: verifyToken, hash: verifyHash } = generateToken();
