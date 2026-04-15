@@ -4,6 +4,9 @@ import { AppShell } from "./components/AppShell.js";
 import { DemoBanner } from "./components/DemoBanner.js";
 import { BrandSync } from "./components/BrandSync.js";
 import { LoginPage } from "./routes/login.js";
+import { ForgotPassword } from "./routes/forgot-password.js";
+import { ResetPassword } from "./routes/reset-password.js";
+import { VerifyEmail } from "./routes/verify-email.js";
 import { DashboardPage } from "./routes/dashboard.js";
 import { GuestsPage } from "./routes/guests.js";
 import { SendWizardPage } from "./routes/send/index.js";
@@ -28,6 +31,9 @@ export function App() {
       <div className="flex-1 min-h-0 flex flex-col">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
           <Route
             element={
               <RequireAuth>

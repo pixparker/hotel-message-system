@@ -9,6 +9,8 @@ export interface AuthClaims {
   sub: string; // user id
   orgId: string;
   role: "admin" | "staff";
+  emailVerified: boolean;
+  jti: string; // JWT ID for refresh token tracking
 }
 
 export async function signAccessToken(claims: AuthClaims): Promise<string> {
@@ -53,6 +55,14 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
     c.set("auth", claims);
   } catch {
     return c.json({ error: "unauthorized" }, 401);
+  }
+  await next();
+};
+
+export const requireVerified: MiddlewareHandler = async (c, next) => {
+  const claims = c.get("auth");
+  if (!claims.emailVerified) {
+    return c.json({ error: "email_not_verified" }, 403);
   }
   await next();
 };

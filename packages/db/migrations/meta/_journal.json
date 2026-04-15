@@ -29,6 +29,13 @@
       "when": 1776240000000,
       "tag": "0003_rls_tenant_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776328800000,
+      "tag": "0004_auth_tokens_email_verification",
+      "breakpoints": true
     }
   ]
 }

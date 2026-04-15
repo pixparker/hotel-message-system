@@ -13,6 +13,7 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   login: (user: AuthUser, accessToken: string, refreshToken: string) => void;
+  setTokens: (accessToken: string, refreshToken: string) => void;
   setTestPhone: (phone: string) => void;
   logout: () => void;
 }
@@ -25,6 +26,8 @@ export const useAuth = create<AuthState>()(
       refreshToken: null,
       login: (user, accessToken, refreshToken) =>
         set({ user, accessToken, refreshToken }),
+      setTokens: (accessToken, refreshToken) =>
+        set({ accessToken, refreshToken }),
       setTestPhone: (phone) =>
         set((s) => (s.user ? { user: { ...s.user, testPhone: phone } } : s)),
       logout: () => set({ user: null, accessToken: null, refreshToken: null }),

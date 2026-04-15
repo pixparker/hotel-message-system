@@ -49,6 +49,9 @@ const serverEnvObject = z.object({
   WA_CLOUD_PHONE_NUMBER_ID: z.string().optional(),
   WA_CLOUD_VERIFY_TOKEN: z.string().optional(),
 
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().email().default("noreply@example.com"),
+
   BOOTSTRAP_ORG_NAME: z.string().optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).optional(),

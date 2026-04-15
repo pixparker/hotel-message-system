@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { WhatsAppIcon } from "../components/WhatsAppIcon.js";
 import { api, ApiError } from "../lib/api.js";
@@ -141,9 +141,17 @@ export function LoginPage() {
             />
           </div>
           <div>
-            <label className="label" htmlFor="password">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="label" htmlFor="password">
+                Password
+              </label>
+              <Link
+                to="/forgot-password"
+                className="text-xs text-slate-500 hover:text-slate-700 font-medium"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <input
               id="password"
               type="password"

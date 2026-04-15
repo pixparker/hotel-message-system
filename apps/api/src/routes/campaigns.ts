@@ -13,7 +13,7 @@ import {
   renderForGuest,
   normalizePhone,
 } from "@hms/shared";
-import { requireAuth, currentOrgId } from "../auth.js";
+import { requireAuth, requireVerified, currentOrgId } from "../auth.js";
 import { withTenant, type TenantDb } from "../tenant.js";
 import { sendMessageQueue } from "../redis.js";
 
@@ -37,6 +37,7 @@ async function resolveBodies(
 export const campaignRoutes = new Hono()
   .use(requireAuth)
   .use(withTenant)
+  .use(requireVerified)
   .get("/", async (c) => {
     const db = c.var.db;
     const orgId = currentOrgId(c);

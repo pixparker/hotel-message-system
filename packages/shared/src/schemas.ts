@@ -109,3 +109,28 @@ export const sseEventSchema = z.discriminatedUnion("type", [
 ]);
 
 export type SseEvent = z.infer<typeof sseEventSchema>;
+
+// --- Auth flows (Task 3) ---
+export const registerSchema = z.object({
+  orgName: z.string().min(2).max(100),
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(32),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(32),
+  password: z.string().min(8),
+});
+
+export type RegisterInput = z.infer<typeof registerSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
