@@ -55,6 +55,10 @@ const serverEnvObject = z.object({
   // Per-org throttle in the worker (derived from Meta tier; defaults to tier 1).
   WORKER_ORG_MSGS_PER_MINUTE: z.coerce.number().int().positive().default(80),
 
+  // 32-byte base64 key used to encrypt per-tenant Meta access tokens at rest.
+  // Generate with: openssl rand -base64 32
+  SECRETS_ENCRYPTION_KEY: secret(),
+
   BOOTSTRAP_ORG_NAME: z.string().optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).optional(),

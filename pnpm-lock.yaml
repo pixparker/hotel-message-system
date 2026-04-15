@@ -26,6 +26,9 @@ importers:
       '@hms/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@hms/wa-driver':
+        specifier: workspace:*
+        version: link:../../packages/wa-driver
       '@hono/node-server':
         specifier: ^1.13.8
         version: 1.19.14(hono@4.12.12)

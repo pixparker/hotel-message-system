@@ -12,6 +12,7 @@
   "dependencies": {
     "@hms/db": "workspace:*",
     "@hms/shared": "workspace:*",
+    "@hms/wa-driver": "workspace:*",
     "@hono/node-server": "^1.13.8",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.34.3",

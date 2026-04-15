@@ -10,6 +10,7 @@ import {
   type ProviderName,
 } from "@hms/wa-driver";
 import { env } from "./env.js";
+import { decryptSecret } from "./crypto.js";
 
 const log = pino({ name: "worker", level: env.LOG_LEVEL });
 const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
@@ -42,8 +43,10 @@ async function getDriverForOrg(orgId: string): Promise<WaDriver> {
     if (!cfg.accessToken || !cfg.phoneNumberId) {
       throw new Error(`cloud driver missing credentials for org ${orgId}`);
     }
+    // Access tokens are encrypted at rest; decrypt before handing to the driver.
+    const accessToken = decryptSecret(cfg.accessToken);
     const drv = createDriver("cloud", {
-      cloud: { accessToken: cfg.accessToken, phoneNumberId: cfg.phoneNumberId },
+      cloud: { accessToken, phoneNumberId: cfg.phoneNumberId },
     });
     wireStatusHandler(drv);
     driverCache.set(orgId, drv);

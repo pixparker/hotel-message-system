@@ -5,6 +5,7 @@ import { getDb, webhookEvents } from "@hms/db";
 import { env } from "../env.js";
 import { log } from "../log.js";
 import { redis } from "../redis.js";
+import { decryptSecret } from "../crypto.js";
 
 const db = getDb();
 
@@ -101,9 +102,11 @@ export const webhookRoutes = new Hono()
       return c.json({ error: "not_found" }, 404);
     }
 
-    const { org_id: orgId, app_secret: appSecret } = settings;
+    const { org_id: orgId, app_secret: storedAppSecret } = settings;
 
-    // 4. Tenant must have configured an app secret to verify against
+    // 4. Tenant must have configured an app secret to verify against.
+    //    App secrets are encrypted at rest; decrypt before using for HMAC.
+    const appSecret = storedAppSecret ? decryptSecret(storedAppSecret) : null;
     if (!appSecret) {
       await persistRejection(orgId, "tenant_missing_app_secret", payload);
       log.warn({ orgId, phoneNumberId }, "tenant has no appSecret configured");
