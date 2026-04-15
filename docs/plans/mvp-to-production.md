@@ -62,8 +62,8 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Scope**: Migration [0005_webhook_signature_verification.sql](../../packages/db/migrations/0005_webhook_signature_verification.sql) extends `webhook_events` with `org_id`, `rejected`, `rejection_reason` and adds SECURITY DEFINER function `webhook_find_settings_by_phone_number_id` for pre-tenant lookup. [apps/api/src/routes/webhooks.ts](../../apps/api/src/routes/webhooks.ts) POST handler rewritten: reads raw body (for HMAC verification), extracts `phone_number_id` from Meta payload, looks up tenant, verifies `X-Hub-Signature-256` with `crypto.timingSafeEqual`. Returns 400 on malformed/missing fields, 404 on unknown phone_number_id, 401 on invalid signature, 200 when verified. All rejections persisted to `webhook_events` with reason. Formalized `waConfigSchema` in [packages/shared/src/schemas.ts](../../packages/shared/src/schemas.ts) with typed fields (phoneNumberId, wabaId, accessToken, appSecret). Also fixed a pre-existing Hono middleware leak: sseRoutes's `.use(requireAuth)` was applied to all `/api/*` paths through `app.route("/api", sseRoutes)`; moved to route-scoped middleware. Committed in `501692a`.
 **Expectation**: tampered payloads are rejected; audit log entry written on rejection.
 
-### 5. [ ] Rate limiting
-**Scope**: per-IP limiter on `/auth/*` (login, register, forgot) and per-org limiter on `/campaigns` + `/guests/import`. Redis-backed.
+### 5. [x] Rate limiting
+**Scope**: New [apps/api/src/rate-limit.ts](../../apps/api/src/rate-limit.ts) implements a fixed-window Redis-backed limiter with fail-open on Redis errors. Applied per-IP to `/api/auth/*` (10 req/min) and per-org to `/api/campaigns` (30 req/min). `Retry-After` header returned on 429. CSV import limiter will be added with Task 13.
 **Expectation**: brute-force login is throttled; one abusive org cannot starve the queue for others.
 
 ---

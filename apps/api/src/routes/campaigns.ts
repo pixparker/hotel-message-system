@@ -16,6 +16,18 @@ import {
 import { requireAuth, requireVerified, currentOrgId } from "../auth.js";
 import { withTenant, type TenantDb } from "../tenant.js";
 import { sendMessageQueue } from "../redis.js";
+import { rateLimit } from "../rate-limit.js";
+
+// Per-org limiter: prevents one tenant from flooding the queue at the expense of others.
+const campaignLimiter = rateLimit({
+  windowSec: 60,
+  max: 30,
+  prefix: "rl:campaigns",
+  keyFrom: (c) => {
+    const claims = c.get("auth");
+    return claims?.orgId;
+  },
+});
 
 async function resolveBodies(
   db: TenantDb,
@@ -38,6 +50,7 @@ export const campaignRoutes = new Hono()
   .use(requireAuth)
   .use(withTenant)
   .use(requireVerified)
+  .use(campaignLimiter)
   .get("/", async (c) => {
     const db = c.var.db;
     const orgId = currentOrgId(c);

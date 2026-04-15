@@ -7,8 +7,17 @@ import { loginSchema, registerSchema, verifyEmailSchema, forgotPasswordSchema, r
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../auth.js";
 import { env } from "../env.js";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../mailer.js";
+import { rateLimit, clientIp } from "../rate-limit.js";
 
 const db = getDb();
+
+// Per-IP limiter on auth endpoints to slow brute-force attempts.
+const authLimiter = rateLimit({
+  windowSec: 60,
+  max: 10,
+  prefix: "rl:auth",
+  keyFrom: clientIp,
+});
 
 type AuthUserRow = {
   id: string;
@@ -41,6 +50,7 @@ const EMAIL_TOKEN_TTL_MINUTES = 15;
 const PASSWORD_RESET_TTL_MINUTES = 15;
 
 export const authRoutes = new Hono()
+  .use(authLimiter)
   .post("/register", async (c) => {
     try {
       const body = registerSchema.parse(await c.req.json());
