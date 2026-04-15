@@ -6,6 +6,7 @@ import {
   guests,
   templates,
   organizations,
+  settings,
 } from "@hms/db";
 import {
   campaignCreateSchema,
@@ -86,6 +87,28 @@ export const campaignRoutes = new Hono()
 
     const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
     const fallback = org?.defaultLanguage ?? "en";
+
+    // Template approval gate: when the tenant uses the cloud provider, Meta
+    // requires templates to be approved before they can be sent. Block here
+    // to avoid queuing thousands of doomed messages. Mock provider is free-form.
+    if (body.templateId) {
+      const [orgSettings] = await db.select().from(settings).where(eq(settings.orgId, orgId));
+      if (orgSettings?.waProvider === "cloud") {
+        const [tpl] = await db
+          .select()
+          .from(templates)
+          .where(and(eq(templates.id, body.templateId), eq(templates.orgId, orgId)));
+        if (tpl && tpl.approvalStatus !== "approved") {
+          return c.json(
+            {
+              error: "template_not_approved",
+              status: tpl.approvalStatus,
+            },
+            400,
+          );
+        }
+      }
+    }
 
     const recipients = await db
       .select()

@@ -28,6 +28,12 @@ export const messageStatus = pgEnum("message_status", [
   "failed",
 ]);
 export const waProvider = pgEnum("wa_provider", ["mock", "cloud", "baileys"]);
+export const templateApprovalStatus = pgEnum("template_approval_status", [
+  "draft",
+  "pending",
+  "approved",
+  "rejected",
+]);
 
 export const organizations = pgTable("organizations", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -85,6 +91,9 @@ export const templates = pgTable("templates", {
     .references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
+  externalName: text("external_name"),
+  approvalStatus: templateApprovalStatus("approval_status").notNull().default("draft"),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -57,6 +57,13 @@
       "when": 1776588000000,
       "tag": "0007_messages_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776674400000,
+      "tag": "0008_template_approval",
+      "breakpoints": true
     }
   ]
 }

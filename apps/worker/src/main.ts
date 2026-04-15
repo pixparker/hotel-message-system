@@ -296,4 +296,8 @@ new Worker(
   { connection, concurrency: 5 },
 );
 
+// Kick off the template-approval sync loop (runs every 5 min per tenant).
+import { startTemplateSyncLoop } from "./template-sync.js";
+startTemplateSyncLoop(db);
+
 log.info(`worker running (default provider=${env.WA_PROVIDER}; per-org drivers resolved lazily)`);

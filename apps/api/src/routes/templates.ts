@@ -92,4 +92,24 @@ export const templateRoutes = new Hono()
       .returning();
     if (deleted.length === 0) return c.json({ error: "not_found" }, 404);
     return c.json({ ok: true });
+  })
+  /**
+   * Submit a template for Meta approval. For MVP this marks status=pending;
+   * wiring to Meta's actual template submission endpoint lands with the
+   * template-sync background job.
+   */
+  .post("/:id/submit", async (c) => {
+    const db = c.var.db;
+    const id = c.req.param("id");
+    const orgId = currentOrgId(c);
+    if (c.get("auth").role !== "admin") {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    const [updated] = await db
+      .update(templates)
+      .set({ approvalStatus: "pending" })
+      .where(and(eq(templates.id, id), eq(templates.orgId, orgId)))
+      .returning();
+    if (!updated) return c.json({ error: "not_found" }, 404);
+    return c.json(updated);
   });
