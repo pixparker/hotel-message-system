@@ -177,7 +177,10 @@ export const settings = pgTable("settings", {
 export const webhookEvents = pgTable("webhook_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   provider: text("provider").notNull(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }),
   payload: jsonb("payload").notNull(),
+  rejected: boolean("rejected").notNull().default(false),
+  rejectionReason: text("rejection_reason"),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

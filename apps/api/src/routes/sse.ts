@@ -6,10 +6,10 @@ import { requireAuth, currentOrgId } from "../auth.js";
 import { withTenant } from "../tenant.js";
 import { subRedis, campaignChannel } from "../redis.js";
 
+// Middleware is scoped to the specific route (not via .use()) to avoid leaking
+// onto sibling paths when this router is mounted at /api alongside webhookRoutes.
 export const sseRoutes = new Hono()
-  .use(requireAuth)
-  .use(withTenant)
-  .get("/campaigns/:id/events", async (c) => {
+  .get("/campaigns/:id/events", requireAuth, withTenant, async (c) => {
     const db = c.var.db;
     const id = c.req.param("id");
     const orgId = currentOrgId(c);

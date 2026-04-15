@@ -64,9 +64,22 @@ export const hexColorSchema = z
   .regex(/^#?[0-9a-fA-F]{6}$/, "Expected a 6-digit hex color, e.g. #14a77a")
   .transform((v) => (v.startsWith("#") ? v.toLowerCase() : `#${v.toLowerCase()}`));
 
+// WhatsApp per-tenant configuration. Extra fields are preserved (passthrough)
+// so we can add provider-specific config without a coordinated migration.
+export const waConfigSchema = z
+  .object({
+    phoneNumberId: z.string().min(1).optional(),
+    wabaId: z.string().min(1).optional(),
+    accessToken: z.string().min(1).optional(),
+    appSecret: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+export type WaConfig = z.infer<typeof waConfigSchema>;
+
 export const settingsUpdateSchema = z.object({
   waProvider: z.enum(["mock", "cloud", "baileys"]).optional(),
-  waConfig: z.record(z.unknown()).optional(),
+  waConfig: waConfigSchema.optional(),
   defaultTestPhone: phoneSchema.optional(),
   brandPrimaryColor: hexColorSchema.nullable().optional(),
 });
