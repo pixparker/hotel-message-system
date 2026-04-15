@@ -87,8 +87,9 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Follow-up deferred (`~`)**: actual account creation + first deploy requires operator credentials I can't provision.
 **Expectation**: push to main deploys api+worker to Fly and web to Vercel; rollback path documented.
 
-### 10. [ ] Observability baseline
-**Scope**: Pino log drain to Axiom or BetterStack. Sentry SDK in api/worker/web with `organization_id` tag. OTel traces on `POST /campaigns → queue → send → webhook`. One dashboard: queue depth, p95 send latency, error rate, Meta 4xx/5xx.
+### 10. [~] Observability baseline
+**Scope**: `@sentry/node` wired into api ([apps/api/src/telemetry.ts](../../apps/api/src/telemetry.ts)) and worker ([apps/worker/src/telemetry.ts](../../apps/worker/src/telemetry.ts)). `initSentry()` is a no-op when `SENTRY_DSN` is missing (dev mode). API middleware `sentryContextMiddleware` tags the Sentry scope with `organization_id` + `user_id` from auth claims, so every captured error carries tenant context. `handleError` in [apps/api/src/errors.ts](../../apps/api/src/errors.ts) routes unhandled exceptions to Sentry (4xx are not paged). Worker's catch block captures send failures with `{orgId, messageId, campaignId}` tags. Env vars: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`, `LOG_DRAIN_URL`. `sendDefaultPii: false` to avoid leaking bodies/tokens.
+**Follow-up deferred (`~`)**: Axiom/BetterStack log drain (env var reserved, operator wires via platform config); OTel traces on the hot path (adds complexity; defer until a user reports a mystery latency issue); dashboard setup (platform-specific).
 **Expectation**: a forced error in staging appears in Sentry with the org tag; the dashboard shows a live campaign run.
 
 ---
@@ -128,8 +129,9 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Scope**: Enable Neon PITR. Document: rotate a WA token, re-drive a failed campaign, revoke a user, restore DB to a point in time, bump Meta tier.
 **Expectation**: on-call can execute each runbook without tribal knowledge.
 
-### 17. [ ] Status page + uptime monitor
-**Scope**: Health checks on api and worker queue depth. BetterStack or equivalent monitor on `api.<domain>/health`. Public status page optional.
+### 17. [~] Status page + uptime monitor
+**Scope**: Two health endpoints on the API: `/health` (always 200, for cheap liveness checks — used by Fly's autoscaler) and `/health/deep` (verifies DB round-trip, Redis ping, BullMQ queue depth < 10k waiting; returns 503 on any failure). Each check reports latency so monitor dashboards can graph slow starts.
+**Follow-up deferred (`~`)**: wire an external uptime monitor (BetterStack/UptimeRobot) on `/health/deep` — this is operator config, not code; documented in [cloud-deploy.md](../runbook/cloud-deploy.md) follow-up. Public status page optional (marketing concern).
 **Expectation**: outages page on-call within 2 minutes.
 
 ### 18. [ ] Load test + throughput tuning

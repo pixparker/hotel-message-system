@@ -59,6 +59,14 @@ const serverEnvObject = z.object({
   // Generate with: openssl rand -base64 32
   SECRETS_ENCRYPTION_KEY: secret(),
 
+  // Observability (Task 10) — all optional. If omitted, the respective
+  // integrations are no-ops (prints to stdout via pino).
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
+  /** Log drain endpoint (Axiom/BetterStack HTTP ingest). Optional. */
+  LOG_DRAIN_URL: z.string().url().optional(),
+
   BOOTSTRAP_ORG_NAME: z.string().optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).optional(),

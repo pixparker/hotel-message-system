@@ -11,6 +11,9 @@ import {
 } from "@hms/wa-driver";
 import { env } from "./env.js";
 import { decryptSecret } from "./crypto.js";
+import { initSentry, captureWorkerError } from "./telemetry.js";
+
+initSentry();
 
 const log = pino({ name: "worker", level: env.LOG_LEVEL });
 const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
@@ -274,6 +277,9 @@ new Worker(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error({ err: message, messageId }, "send failed");
+      if (err instanceof Error) {
+        captureWorkerError(err, { orgId, messageId, campaignId });
+      }
       await asTenant(orgId, async (tx) => {
         await tx
           .update(messages)
