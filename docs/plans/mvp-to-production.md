@@ -70,8 +70,8 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 
 ## Stage 2 — Real WhatsApp + platform (week 2)
 
-### 6. [ ] Meta Cloud API driver
-**Scope**: Implement `packages/wa-driver/src/cloud.ts` — template send, parameter substitution, error mapping (429/5xx → retryable, 4xx → terminal), status parsing from webhook. Keep mock driver for CI. Factory reads provider + credentials from tenant settings.
+### 6. [x] Meta Cloud API driver
+**Scope**: New [packages/wa-driver/src/cloud.ts](../../packages/wa-driver/src/cloud.ts) implements `CloudWaDriver` using Meta Graph API v22.0. `sendText` posts to `/{phoneNumberId}/messages`; `CloudApiError` classifies errors (429 + 5xx retryable, 4xx terminal). `handleWebhook(payload)` parses `entry[].changes[].value.statuses[]` and `.messages[]`, emitting `StatusEvent`s and `InboundMessage`s to registered handlers. Factory accepts `{ cloud: { accessToken, phoneNumberId } }`. Worker now resolves one driver per org on demand from `settings.waConfig` (mock stays shared; cloud is per-tenant). Webhook handler publishes verified payloads to Redis `wa:webhook`; worker subscribes and dispatches to the right org's cloud driver. Full cloud e2e needs Meta sandbox credentials.
 **Expectation**: staging campaign of 50 messages delivers via Meta sandbox, statuses land back via webhook, errors are classified correctly.
 
 ### 7. [ ] Template approval workflow

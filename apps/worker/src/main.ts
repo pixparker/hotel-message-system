@@ -2,17 +2,56 @@ import { Worker } from "bullmq";
 import IORedis from "ioredis";
 import pino from "pino";
 import { eq, sql } from "drizzle-orm";
-import { getDb, messages, campaigns } from "@hms/db";
-import { createDriver, type WaDriver } from "@hms/wa-driver";
+import { getDb, messages, campaigns, settings } from "@hms/db";
+import {
+  createDriver,
+  CloudWaDriver,
+  type WaDriver,
+  type ProviderName,
+} from "@hms/wa-driver";
 import { env } from "./env.js";
 
 const log = pino({ name: "worker", level: env.LOG_LEVEL });
 const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const pub = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
+const webhookSub = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const db = getDb(env.DATABASE_URL);
 
-// Single shared driver for M1 (one org, one WA account).
-const driver: WaDriver = createDriver(env.WA_PROVIDER);
+// Per-tenant driver cache. For "mock" provider we share a single instance;
+// for "cloud", each org gets its own driver with its own credentials.
+const driverCache = new Map<string, WaDriver>();
+const mockDriver = createDriver("mock");
+
+async function getDriverForOrg(orgId: string): Promise<WaDriver> {
+  const cached = driverCache.get(orgId);
+  if (cached) return cached;
+
+  const [row] = await db.select().from(settings).where(eq(settings.orgId, orgId));
+  const provider: ProviderName = (row?.waProvider as ProviderName) ?? env.WA_PROVIDER;
+
+  if (provider === "mock") {
+    driverCache.set(orgId, mockDriver);
+    return mockDriver;
+  }
+
+  if (provider === "cloud") {
+    const cfg = (row?.waConfig ?? {}) as {
+      accessToken?: string;
+      phoneNumberId?: string;
+    };
+    if (!cfg.accessToken || !cfg.phoneNumberId) {
+      throw new Error(`cloud driver missing credentials for org ${orgId}`);
+    }
+    const drv = createDriver("cloud", {
+      cloud: { accessToken: cfg.accessToken, phoneNumberId: cfg.phoneNumberId },
+    });
+    wireStatusHandler(drv);
+    driverCache.set(orgId, drv);
+    return drv;
+  }
+
+  throw new Error(`unsupported provider ${provider}`);
+}
 
 // Map providerMessageId → {orgId, campaignId, messageId} so status callbacks
 // can re-establish the tenant context before touching RLS-protected tables.
@@ -41,8 +80,34 @@ async function orgIdForMessage(messageId: string): Promise<string | null> {
   return rows[0]?.org_id ?? null;
 }
 
-driver.onStatus(async (e) => {
-  let ref = inflight.get(e.providerMessageId);
+function wireStatusHandler(d: WaDriver) {
+  d.onStatus(onStatusEvent);
+}
+
+wireStatusHandler(mockDriver);
+
+// Subscribe to webhook pub/sub so verified Meta Cloud payloads are
+// dispatched into the per-tenant driver → worker status pipeline.
+webhookSub.subscribe("wa:webhook").catch((err) => {
+  log.error({ err }, "failed to subscribe to wa:webhook");
+});
+webhookSub.on("message", async (_, raw) => {
+  try {
+    const { orgId, payload } = JSON.parse(raw) as {
+      orgId: string;
+      payload: unknown;
+    };
+    const d = await getDriverForOrg(orgId);
+    if (d instanceof CloudWaDriver) {
+      d.handleWebhook(payload);
+    }
+  } catch (err) {
+    log.error({ err }, "failed to process wa:webhook message");
+  }
+});
+
+async function onStatusEvent(e: import("@hms/wa-driver").StatusEvent) {
+  const ref = inflight.get(e.providerMessageId);
   if (!ref) return;
   const { orgId } = ref;
 
@@ -80,7 +145,7 @@ driver.onStatus(async (e) => {
     inflight.delete(e.providerMessageId);
     await maybeFinalizeCampaign(orgId, ref.campaignId);
   }
-});
+}
 
 async function maybeFinalizeCampaign(orgId: string, campaignId: string) {
   const done = await asTenant(orgId, async (tx) => {
@@ -178,7 +243,8 @@ new Worker(
     if (result.kind === "skip") return;
 
     try {
-      const res = await driver.sendText(result.phone, result.body);
+      const tenantDriver = await getDriverForOrg(orgId);
+      const res = await tenantDriver.sendText(result.phone, result.body);
       inflight.set(res.providerMessageId, { orgId, messageId, campaignId });
       await asTenant(orgId, async (tx) => {
         await tx
@@ -230,4 +296,4 @@ new Worker(
   { connection, concurrency: 5 },
 );
 
-log.info(`worker running (driver=${driver.name})`);
+log.info(`worker running (default provider=${env.WA_PROVIDER}; per-org drivers resolved lazily)`);

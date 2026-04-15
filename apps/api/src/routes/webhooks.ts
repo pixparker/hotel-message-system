@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { getDb, webhookEvents } from "@hms/db";
 import { env } from "../env.js";
 import { log } from "../log.js";
+import { redis } from "../redis.js";
 
 const db = getDb();
 
@@ -121,7 +122,8 @@ export const webhookRoutes = new Hono()
       return c.json({ error: "invalid_signature" }, 401);
     }
 
-    // 6. Accepted — persist with org context for downstream worker processing.
+    // 6. Accepted — persist with org context and publish to the worker
+    //    via Redis pub/sub so it can update message status.
     await db.insert(webhookEvents).values({
       provider: "cloud",
       orgId,
@@ -129,6 +131,10 @@ export const webhookRoutes = new Hono()
       rejected: false,
     });
 
-    // M2: publish to a processing queue so the worker updates message status.
+    await redis.publish(
+      "wa:webhook",
+      JSON.stringify({ orgId, payload }),
+    );
+
     return c.json({ ok: true });
   });
