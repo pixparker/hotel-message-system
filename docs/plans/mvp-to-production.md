@@ -125,8 +125,8 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 
 ## Stage 4 — Launch polish (week 4 / buffer)
 
-### 16. [ ] Backups + runbook
-**Scope**: Enable Neon PITR. Document: rotate a WA token, re-drive a failed campaign, revoke a user, restore DB to a point in time, bump Meta tier.
+### 16. [x] Backups + runbook
+**Scope**: [docs/runbook/backups.md](../runbook/backups.md) covers: Neon PITR full restore (step-by-step with fly secrets commands), partial per-tenant restore via psql `\copy`, secondary nightly pg_dump workflow stub, and the explicit five routine tasks from the scope — rotate WA token, re-drive failed campaign, revoke a user, restore to point in time, bump Meta tier. Plus a disaster-scenarios checklist mapping symptoms (health endpoint state, tenant complaint) → first action → owner.
 **Expectation**: on-call can execute each runbook without tribal knowledge.
 
 ### 17. [~] Status page + uptime monitor
