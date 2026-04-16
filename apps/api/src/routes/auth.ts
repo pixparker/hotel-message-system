@@ -63,6 +63,16 @@ async function hashPassword(password: string): Promise<string> {
 const EMAIL_TOKEN_TTL_MINUTES = 15;
 const PASSWORD_RESET_TTL_MINUTES = 15;
 
+/**
+ * Precomputed bcrypt hash of a random value, used to equalize response times
+ * when the email doesn't exist. Running bcrypt.compare against this hash with
+ * the incoming password takes the same ~100ms as a real user lookup, so an
+ * attacker can't learn whether an email is registered from timing.
+ *
+ * Hashed once at module load (not per request) to avoid the startup cost.
+ */
+const TIMING_DUMMY_HASH = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 12);
+
 export const authRoutes = new Hono()
   .use(authLimiter)
   .post("/register", async (c) => {
@@ -251,6 +261,9 @@ export const authRoutes = new Hono()
       )) as unknown as AuthUserRow[];
       const user = rows[0];
       if (!user) {
+        // Burn the same bcrypt cycles a real user would, so response timing
+        // doesn't leak whether the email exists (user enumeration defense).
+        await bcrypt.compare(body.password, TIMING_DUMMY_HASH);
         await auditLog({
           action: "auth.login_failed",
           metadata: { email: body.email, reason: "unknown_email" },

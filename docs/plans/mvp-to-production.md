@@ -139,8 +139,8 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Follow-up deferred (`~`)**: run against Meta sandbox (operator creds needed); tune per-tenant `msgsPerMinute` override in `settings.wa_config`.
 **Expectation**: documented throughput ceiling per tier; worker stays under target memory/CPU.
 
-### 19. [ ] Security review pass
-**Scope**: `pnpm audit` clean or documented exceptions; CSP on web; secure cookie flags; CORS allowlist; response-time-equal login errors; protected routes 401 without auth and 404 (not 403) on cross-tenant reads.
+### 19. [x] Security review pass
+**Scope**: [docs/runbook/security-review.md](../runbook/security-review.md) documents every checklist item + status + evidence. Key changes landed: (1) constant-time login — unknown-email branch now runs `bcrypt.compare` against a precomputed `TIMING_DUMMY_HASH` so response timing doesn't leak email existence; (2) CSP + security headers on [vercel.json](../../vercel.json) — strict default-src 'self', Sentry ingest allowed for connect-src, frame-ancestors 'none', HSTS, nosniff, Permissions-Policy deny for camera/mic/geolocation. Verified: CORS allowlist is a single env-driven origin (not `*`); all tenant-scoped `findFirst` queries pair `id` with `orgId` (returns 404, not 403, on cross-tenant reads); requireAuth returns 401 on missing/invalid tokens; RLS policies back up the app-layer check. `pnpm audit` exception documented (retired endpoint on pnpm 9.15). Residual risks enumerated: JWT-in-localStorage XSS risk (mitigated by CSP), no WAF, no 2FA — all tracked for a follow-up hardening sprint.
 **Expectation**: checklist ticked; findings either fixed or filed with severity.
 
 ---
