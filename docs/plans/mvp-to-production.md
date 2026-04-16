@@ -134,8 +134,9 @@ Pick tasks top-to-bottom; each has scope + expectation + status.
 **Follow-up deferred (`~`)**: wire an external uptime monitor (BetterStack/UptimeRobot) on `/health/deep` — this is operator config, not code; documented in [cloud-deploy.md](../runbook/cloud-deploy.md) follow-up. Public status page optional (marketing concern).
 **Expectation**: outages page on-call within 2 minutes.
 
-### 18. [ ] Load test + throughput tuning
-**Scope**: Simulate a 5k-message campaign against Meta sandbox. Tune BullMQ concurrency, DB pool size, Meta tier.
+### 18. [~] Load test + throughput tuning
+**Scope**: [scripts/load-test.ts](../../scripts/load-test.ts) seeds synthetic guests, creates a 5k-recipient campaign, enqueues all jobs, and polls campaign totals until drain — prints enqueue throughput, drain latency, and msgs/sec. [docs/runbook/throughput-tuning.md](../runbook/throughput-tuning.md) enumerates every lever (worker concurrency, `WORKER_ORG_MSGS_PER_MINUTE`, Postgres pool, Fly memory, Redis eviction policy) with defaults and guidance on when to raise each, plus Meta-tier throughput ceilings and a "where to focus when drain is slow" diagnostic ladder. Baseline dev numbers (MacBook + docker compose + mock driver) captured: ~2500 enqueue jobs/s, ~110 msgs/s sustained drain (bounded by mock driver's fake-delivery setTimeout, not our code).
+**Follow-up deferred (`~`)**: run against Meta sandbox (operator creds needed); tune per-tenant `msgsPerMinute` override in `settings.wa_config`.
 **Expectation**: documented throughput ceiling per tier; worker stays under target memory/CPU.
 
 ### 19. [ ] Security review pass
