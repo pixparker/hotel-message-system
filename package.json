@@ -8,13 +8,19 @@
   },
   "scripts": {
     "dev": "turbo run dev --parallel",
+    "dev:setup": "pnpm services:up && pnpm db:migrate && pnpm db:seed",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "services:up": "docker compose -f deploy/docker-compose.dev.yml up -d",
+    "services:down": "docker compose -f deploy/docker-compose.dev.yml down",
+    "services:logs": "docker compose -f deploy/docker-compose.dev.yml logs -f",
+    "services:reset": "docker compose -f deploy/docker-compose.dev.yml down -v && pnpm services:up",
     "db:generate": "pnpm --filter @hms/db generate",
     "db:migrate": "pnpm --filter @hms/db migrate",
-    "db:seed": "pnpm --filter @hms/db seed"
+    "db:seed": "pnpm --filter @hms/db seed",
+    "db:psql": "docker compose -f deploy/docker-compose.dev.yml exec postgres psql -U hms -d hms"
   },
   "devDependencies": {
     "turbo": "^2.3.3",

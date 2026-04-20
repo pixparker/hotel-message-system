@@ -7,13 +7,21 @@ Web-based WhatsApp messaging for hotel staff. Ships as a SaaS or as a single-hot
 ```bash
 pnpm install
 cp .env.example .env
-docker compose -f deploy/docker-compose.dev.yml up -d   # postgres + redis only
-pnpm db:migrate
-pnpm db:seed
-pnpm dev
+pnpm dev:setup       # postgres + redis + migrate + seed (first time)
+pnpm dev             # api + worker + web in parallel
 ```
 
 Then open http://localhost:5173.
+
+Handy helpers:
+
+```bash
+pnpm services:up      # start postgres + redis
+pnpm services:down    # stop them (data preserved in volumes)
+pnpm services:reset   # nuke volumes and start clean — re-run dev:setup after
+pnpm services:logs    # tail postgres + redis logs
+pnpm db:psql          # shell into the dev database
+```
 
 ## Structure
 
