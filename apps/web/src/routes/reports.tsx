@@ -40,7 +40,7 @@ export function ReportsPage() {
     return (
       <Page
         title="WhatsApp Campaign Performance"
-        description="How your guest messages actually perform."
+        description="How your WhatsApp campaigns actually perform."
       >
         <EmptyState
           icon={BarChart3}
@@ -94,7 +94,7 @@ export function ReportsPage() {
   return (
     <Page
       title="WhatsApp Campaign Performance"
-      description="How your guest messages actually perform — with industry context."
+      description="How your campaigns actually perform — with industry context."
     >
       {totals.readRate >= 95 && totals.sent > 0 && (
         <div className="mb-6 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-emerald-50/60 to-white px-5 py-3.5 shadow-[0_8px_24px_-16px_rgba(16,185,129,0.4)]">
@@ -103,7 +103,7 @@ export function ReportsPage() {
           </div>
           <div className="text-sm">
             <span className="font-semibold text-emerald-900">
-              All guests reached successfully.
+              All recipients reached successfully.
             </span>{" "}
             <span className="text-slate-600">
               {totals.readRate}% of your messages were read — the kind of engagement
@@ -195,8 +195,8 @@ export function ReportsPage() {
               </div>
               <div className="mt-1 text-lg font-semibold text-slate-900">
                 {topCampaign.seen === topCampaign.queued
-                  ? "This message reached every guest — read by all within minutes."
-                  : `Read by ${topCampaign.seen} of ${topCampaign.queued} guests.`}
+                  ? "This message reached every recipient — read by all within minutes."
+                  : `Read by ${topCampaign.seen} of ${topCampaign.queued} recipients.`}
               </div>
               <div className="mt-1 text-sm text-slate-600">
                 <Link
@@ -254,7 +254,7 @@ export function ReportsPage() {
                     {everyoneRead && (
                       <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-emerald-700">
                         <CheckCircle2 className="h-3 w-3" />
-                        All guests reached
+                        All recipients reached
                       </div>
                     )}
                   </td>
@@ -449,7 +449,7 @@ function ReadBucketsCard({
     <div className="card p-5">
       <div className="flex items-center gap-2 text-sm font-semibold">
         <Timer className="h-4 w-4 text-brand-600" />
-        How fast guests read
+        How fast recipients read
       </div>
 
       {bucketTotal === 0 ? (

@@ -3,7 +3,7 @@
  * Kept as TypeScript (not JSON) so the structure is type-checked.
  */
 
-export interface SampleGuest {
+export interface SampleContact {
   name: string;
   phoneE164: string;
   language: "en" | "tr" | "fa";
@@ -11,13 +11,16 @@ export interface SampleGuest {
   status?: "checked_in" | "checked_out";
 }
 
+/** @deprecated use SampleContact */
+export type SampleGuest = SampleContact;
+
 export interface SampleTemplate {
   name: string;
   description: string;
   bodies: Array<{ language: "en" | "tr" | "fa"; body: string }>;
 }
 
-export const SAMPLE_GUESTS: SampleGuest[] = [
+export const SAMPLE_CONTACTS: SampleContact[] = [
   { name: "Ayşe Yılmaz", phoneE164: "+905321112233", language: "tr", roomNumber: "204" },
   { name: "John Parker", phoneE164: "+14155552671", language: "en", roomNumber: "312" },
   { name: "Farhad Karimi", phoneE164: "+989121234567", language: "fa", roomNumber: "508" },
@@ -34,6 +37,9 @@ export const SAMPLE_GUESTS: SampleGuest[] = [
   { name: "David Cohen", phoneE164: "+447700900123", language: "en", status: "checked_out" },
   { name: "Lucia Fernández", phoneE164: "+34612345678", language: "en", status: "checked_out" },
 ];
+
+/** @deprecated use SAMPLE_CONTACTS */
+export const SAMPLE_GUESTS = SAMPLE_CONTACTS;
 
 export const SAMPLE_TEMPLATES: SampleTemplate[] = [
   {

@@ -3,12 +3,13 @@ import { getDb } from "./client.js";
 import {
   organizations,
   users,
-  guests,
+  contacts,
+  contactAudiences,
   templates,
   templateBodies,
   settings,
 } from "./schema.js";
-import { eq } from "drizzle-orm";
+import { createDefaultAudiences } from "./defaults.js";
 
 const ORG_NAME = process.env.BOOTSTRAP_ORG_NAME ?? "Reform Hotel";
 const ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL ?? "admin@hotel.local";
@@ -24,7 +25,11 @@ if (existingOrg.length > 0) {
 
 const [org] = await db
   .insert(organizations)
-  .values({ name: ORG_NAME, defaultLanguage: "en" })
+  .values({
+    name: ORG_NAME,
+    defaultLanguage: "en",
+    onboardingState: { defaultAudiencesCreated: true },
+  })
   .returning();
 
 await db.insert(settings).values({
@@ -45,23 +50,41 @@ const [admin] = await db
   })
   .returning();
 
-// ~70% of guests get a room number; the rest are walk-ins / unassigned.
-await db.insert(guests).values([
-  { orgId: org!.id, name: "Ayşe Yılmaz", phoneE164: "+905321112233", language: "tr", roomNumber: "204" },
-  { orgId: org!.id, name: "John Parker", phoneE164: "+14155552671", language: "en", roomNumber: "312" },
-  { orgId: org!.id, name: "Farhad Karimi", phoneE164: "+989121234567", language: "fa", roomNumber: "508" },
-  { orgId: org!.id, name: "Marta Silva", phoneE164: "+351912345678", language: "en" },
-  { orgId: org!.id, name: "Mehmet Demir", phoneE164: "+905331234567", language: "tr", roomNumber: "221" },
-  { orgId: org!.id, name: "Sara Ahmadi", phoneE164: "+989351112233", language: "fa", roomNumber: "417" },
-  {
+// System audiences (Hotel Guests / VIP / Friends) for the new org.
+const defaults = await createDefaultAudiences(db, org!.id);
+
+// ~70% of contacts get a room number; the rest are walk-ins / unassigned.
+const insertedContacts = await db
+  .insert(contacts)
+  .values([
+    { orgId: org!.id, name: "Ayşe Yılmaz", phoneE164: "+905321112233", language: "tr", source: "hotel", status: "checked_in", checkedInAt: new Date(), roomNumber: "204" },
+    { orgId: org!.id, name: "John Parker", phoneE164: "+14155552671", language: "en", source: "hotel", status: "checked_in", checkedInAt: new Date(), roomNumber: "312" },
+    { orgId: org!.id, name: "Farhad Karimi", phoneE164: "+989121234567", language: "fa", source: "hotel", status: "checked_in", checkedInAt: new Date(), roomNumber: "508" },
+    { orgId: org!.id, name: "Marta Silva", phoneE164: "+351912345678", language: "en", source: "hotel", status: "checked_in", checkedInAt: new Date() },
+    { orgId: org!.id, name: "Mehmet Demir", phoneE164: "+905331234567", language: "tr", source: "hotel", status: "checked_in", checkedInAt: new Date(), roomNumber: "221" },
+    { orgId: org!.id, name: "Sara Ahmadi", phoneE164: "+989351112233", language: "fa", source: "hotel", status: "checked_in", checkedInAt: new Date(), roomNumber: "417" },
+    {
+      orgId: org!.id,
+      name: "David Cohen",
+      phoneE164: "+447700900123",
+      language: "en",
+      source: "hotel",
+      status: "checked_out",
+      checkedInAt: new Date(Date.now() - 172800000),
+      checkedOutAt: new Date(Date.now() - 86400000),
+    },
+  ])
+  .returning({ id: contacts.id });
+
+// All seed contacts belong to Hotel Guests — this mirrors what the M1
+// migration does for pre-existing databases.
+await db.insert(contactAudiences).values(
+  insertedContacts.map((c) => ({
+    contactId: c.id,
+    audienceId: defaults.hotel_guests.id,
     orgId: org!.id,
-    name: "David Cohen",
-    phoneE164: "+447700900123",
-    language: "en",
-    status: "checked_out",
-    checkedOutAt: new Date(Date.now() - 86400000),
-  },
-]);
+  })),
+);
 
 const [welcome] = await db
   .insert(templates)

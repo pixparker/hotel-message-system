@@ -9,7 +9,9 @@ import { ForgotPassword } from "./routes/forgot-password.js";
 import { ResetPassword } from "./routes/reset-password.js";
 import { VerifyEmail } from "./routes/verify-email.js";
 import { DashboardPage } from "./routes/dashboard.js";
-import { GuestsPage } from "./routes/guests.js";
+import { ContactsPage } from "./routes/contacts.js";
+import { AudiencesPage } from "./routes/audiences.js";
+import { AudienceDetailPage } from "./routes/audience-detail.js";
 import { SendWizardPage } from "./routes/send/index.js";
 import { LivePage } from "./routes/live.js";
 import { ReportsPage } from "./routes/reports.js";
@@ -45,7 +47,11 @@ export function App() {
             }
           >
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/guests" element={<GuestsPage />} />
+            <Route path="/contacts" element={<ContactsPage />} />
+            {/* Legacy redirect — /guests links, bookmarks, and old emails still land on the right page. */}
+            <Route path="/guests" element={<Navigate to="/contacts" replace />} />
+            <Route path="/audiences" element={<AudiencesPage />} />
+            <Route path="/audiences/:id" element={<AudienceDetailPage />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/templates/:id" element={<TemplateEditPage />} />
             <Route path="/send/*" element={<SendWizardPage />} />

@@ -9,7 +9,7 @@ export interface ReportsStats {
     delivered: number;
     seen: number;
     failed: number;
-    uniqueGuests: number;
+    uniqueRecipients: number;
     deliveryRate: number;
     readRate: number;
   };

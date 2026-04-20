@@ -9,7 +9,7 @@ export interface WizardState {
   templateId: string | null;
   customBodies: Partial<Record<Language, string>>;
   primaryLanguage: Language;
-  recipientStatus: "checked_in" | "checked_out";
+  selectedAudienceIds: string[];
   saveAsTemplate: boolean;
   templateName: string;
   reset: () => void;
@@ -23,7 +23,7 @@ const initial = {
   templateId: null,
   customBodies: {},
   primaryLanguage: "en" as Language,
-  recipientStatus: "checked_in" as const,
+  selectedAudienceIds: [] as string[],
   saveAsTemplate: false,
   templateName: "",
 };
@@ -35,6 +35,8 @@ export const useWizard = create<WizardState>()(
       reset: () => set(initial),
       patch: (p) => set(p),
     }),
-    { name: "hms-wizard" },
+    // Bump the persisted key — the shape changed (recipientStatus →
+    // selectedAudienceIds) so old localStorage would crash on load.
+    { name: "hms-wizard-v2" },
   ),
 );

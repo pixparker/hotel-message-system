@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
+  ListFilter,
   Send,
   BarChart3,
   Settings,
@@ -19,7 +20,8 @@ import { WhatsAppIcon } from "./WhatsAppIcon.js";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/guests", label: "Guests", icon: Users },
+  { to: "/contacts", label: "Contacts", icon: Users },
+  { to: "/audiences", label: "Audiences", icon: ListFilter },
   { to: "/templates", label: "Templates", icon: FileText },
   { to: "/send", label: "Send message", icon: Send, emphasis: true },
   { to: "/reports", label: "Reports", icon: BarChart3 },
@@ -116,7 +118,7 @@ export function AppShell() {
               Reform Hotel
             </div>
             <div className="text-[11px] uppercase tracking-wide text-brand-700/80 font-medium">
-              Guest messaging
+              Customer messaging
             </div>
           </div>
           <button

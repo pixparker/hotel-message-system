@@ -3,10 +3,10 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { LogOut, Loader2, BedDouble, Phone, Languages, Clock } from "lucide-react";
 import { formatPhoneDisplay, LANGUAGE_LABELS } from "@hms/shared";
 import {
-  useCheckOutGuest,
-  useUndoCheckOut,
-  type Guest,
-} from "../hooks/useGuests.js";
+  useCheckOutContact,
+  useUndoCheckOutContact,
+  type Contact,
+} from "../hooks/useContacts.js";
 import { LANGUAGE_FLAGS } from "./LanguagePicker.js";
 import { useToast } from "./toast.js";
 
@@ -15,12 +15,12 @@ export function CheckoutDialog({
   open,
   onOpenChange,
 }: {
-  guest: Guest | null;
+  guest: Contact | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const checkout = useCheckOutGuest();
-  const undo = useUndoCheckOut();
+  const checkout = useCheckOutContact();
+  const undo = useUndoCheckOutContact();
   const { push } = useToast();
   const [submitting, setSubmitting] = useState(false);
 
@@ -87,7 +87,9 @@ export function CheckoutDialog({
                 </Row>
                 <Row icon={Clock} label="Checked in">
                   <span className="text-slate-600">
-                    {new Date(guest.checkedInAt).toLocaleString()}
+                    {guest.checkedInAt
+                      ? new Date(guest.checkedInAt).toLocaleString()
+                      : "—"}
                   </span>
                 </Row>
               </dl>

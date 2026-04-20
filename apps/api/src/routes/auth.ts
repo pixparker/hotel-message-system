@@ -10,11 +10,13 @@ import {
   emailVerificationTokens,
   passwordResetTokens,
   settings,
-  guests,
+  contacts,
+  contactAudiences,
   templates,
   templateBodies,
-  SAMPLE_GUESTS,
+  SAMPLE_CONTACTS,
   SAMPLE_TEMPLATES,
+  createDefaultAudiences,
 } from "@hms/db";
 import { loginSchema, registerSchema, verifyEmailSchema, forgotPasswordSchema, resetPasswordSchema } from "@hms/shared";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../auth.js";
@@ -87,9 +89,19 @@ export const authRoutes = new Hono()
         return c.json({ error: "email_already_in_use" }, 400);
       }
 
-      // Create org
-      const [org] = await db.insert(organizations).values({ name: body.orgName, defaultLanguage: "en" }).returning();
+      // Create org (flag default audiences as seeded — we do that below).
+      const [org] = await db
+        .insert(organizations)
+        .values({
+          name: body.orgName,
+          defaultLanguage: "en",
+          onboardingState: { defaultAudiencesCreated: true },
+        })
+        .returning();
       if (!org) throw new Error("Failed to create organization");
+
+      // Every workspace gets the 3 system audiences (Hotel Guests / VIP / Friends).
+      const defaultAudiences = await createDefaultAudiences(db, org.id);
 
       // Create user (email not verified yet)
       const passwordHash = await hashPassword(body.password);
@@ -114,16 +126,37 @@ export const authRoutes = new Hono()
 
       // Optionally populate sample data so a new operator sees a non-empty workspace.
       if (body.populateSampleData) {
-        await db.insert(guests).values(
-          SAMPLE_GUESTS.map((g) => ({
-            orgId: org.id,
-            name: g.name,
-            phoneE164: g.phoneE164,
-            language: g.language,
-            roomNumber: g.roomNumber,
-            status: g.status ?? "checked_in",
-          })),
-        );
+        const insertedContacts = await db
+          .insert(contacts)
+          .values(
+            SAMPLE_CONTACTS.map((g) => ({
+              orgId: org.id,
+              name: g.name,
+              phoneE164: g.phoneE164,
+              language: g.language,
+              source: "hotel" as const,
+              roomNumber: g.roomNumber,
+              status: g.status ?? ("checked_in" as const),
+              checkedInAt: new Date(),
+              checkedOutAt:
+                g.status === "checked_out" ? new Date(Date.now() - 86400000) : null,
+            })),
+          )
+          .returning({ id: contacts.id });
+
+        // Sample contacts all came from the hotel flow — drop them into
+        // the Hotel Guests audience so campaigns and reports work out of
+        // the box.
+        if (insertedContacts.length > 0) {
+          await db.insert(contactAudiences).values(
+            insertedContacts.map((row) => ({
+              contactId: row.id,
+              audienceId: defaultAudiences.hotel_guests.id,
+              orgId: org.id,
+            })),
+          );
+        }
+
         for (const tpl of SAMPLE_TEMPLATES) {
           const [tplRow] = await db
             .insert(templates)

@@ -1,11 +1,29 @@
 import { Link, useParams } from "react-router-dom";
-import { CheckCircle2, Send, Eye, AlertTriangle, ArrowRight } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, Send, Eye, AlertTriangle, ArrowRight, Users } from "lucide-react";
 import { Page } from "../components/Page.js";
+import { AudienceChip } from "../components/AudienceChip.js";
 import { useCampaignStream } from "../hooks/useCampaignStream.js";
+import { api } from "../lib/api.js";
+import type { AudienceKind } from "../hooks/useAudiences.js";
+
+interface CampaignHeader {
+  audiences?: Array<{
+    id: string;
+    name: string;
+    kind: AudienceKind;
+    isSystem: boolean;
+  }>;
+}
 
 export function LivePage() {
   const { id = "" } = useParams();
   const { totals, status, done } = useCampaignStream(id);
+  const { data: header } = useQuery({
+    queryKey: ["campaign-header", id],
+    queryFn: () => api<CampaignHeader>(`/api/campaigns/${id}`),
+    enabled: !!id,
+  });
   const progress = totals.queued === 0 ? 0 : Math.min(100, Math.round(((totals.seen + totals.failed) / totals.queued) * 100));
 
   return (
@@ -22,6 +40,26 @@ export function LivePage() {
         </Link>
       }
     >
+      {header?.audiences && header.audiences.length > 0 && (
+        <div className="card p-5 mb-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <Users className="h-3.5 w-3.5" />
+            Sending to
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {header.audiences.map((a) => (
+              <AudienceChip
+                key={a.id}
+                name={a.name}
+                kind={a.kind}
+                isSystem={a.isSystem}
+                size="md"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="card p-6">
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-medium">Progress</div>
