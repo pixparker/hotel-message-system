@@ -27,4 +27,9 @@ COPY --from=build /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=build /app/apps/worker/package.json ./apps/worker/
 USER hms
 ENV NODE_ENV=production
-CMD ["node", "apps/worker/dist/main.js"]
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+# Workspace packages (@hms/db, @hms/shared, @hms/wa-driver) export raw .ts
+# files, so we run the worker via tsx instead of compiled dist/. The
+# worker's own src is still typechecked during the `build` stage.
+CMD ["packages/db/node_modules/.bin/tsx", "apps/worker/src/main.ts"]

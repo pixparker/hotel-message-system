@@ -25,6 +25,8 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.api
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     image: mvp-hotel-message-api:latest
     restart: unless-stopped
     env_file: ../.env
@@ -43,6 +45,8 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.worker
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     image: mvp-hotel-message-worker:latest
     restart: unless-stopped
     env_file: ../.env
@@ -55,6 +59,8 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.web
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     image: mvp-hotel-message-web:latest
     restart: unless-stopped
     networks:
