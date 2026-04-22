@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, Palette, RotateCcw } from "lucide-react";
+import {
+  Check,
+  Loader2,
+  Palette,
+  RotateCcw,
+  ArrowRight,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 import { Page } from "../components/Page.js";
 import { api } from "../lib/api.js";
 import { useToast } from "../components/toast.js";
@@ -20,44 +29,57 @@ interface Settings {
   brandPrimaryColor: string | null;
 }
 
+interface BaileysStatus {
+  status: "none" | "pending" | "connected" | "logged_out" | "failed";
+  phoneE164?: string | null;
+}
+
 export function SettingsPage() {
   const qc = useQueryClient();
   const { data, refetch } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<Settings>("/api/settings"),
   });
-  const [provider, setProvider] = useState<Settings["waProvider"]>(
-    data?.waProvider ?? "mock",
-  );
+  const { data: baileys } = useQuery({
+    queryKey: ["baileys-status"],
+    queryFn: () => api<BaileysStatus>("/api/settings/whatsapp/baileys/status"),
+  });
   const [defaultTestPhone, setDefaultTestPhone] = useState(
     data?.defaultTestPhone ?? "",
   );
   const [saving, setSaving] = useState(false);
   const { push } = useToast();
 
-  // When the query resolves, hydrate the local form state.
   useEffect(() => {
     if (!data) return;
-    setProvider(data.waProvider);
     setDefaultTestPhone(data.defaultTestPhone ?? "");
   }, [data]);
 
-  async function save() {
+  async function saveTestPhone() {
     setSaving(true);
     try {
       await api("/api/settings", {
         method: "PATCH",
-        body: JSON.stringify({
-          waProvider: provider,
-          defaultTestPhone: defaultTestPhone || undefined,
-        }),
+        body: JSON.stringify({ defaultTestPhone: defaultTestPhone || undefined }),
       });
-      push({ variant: "success", title: "Settings saved" });
+      push({ variant: "success", title: "Default test number saved" });
       refetch();
     } catch {
       push({ variant: "error", title: "Could not save" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function switchProvider(next: Settings["waProvider"]) {
+    try {
+      await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ waProvider: next }),
+      });
+      refetch();
+    } catch {
+      push({ variant: "error", title: "Could not switch provider" });
     }
   }
 
@@ -75,34 +97,67 @@ export function SettingsPage() {
           }}
         />
 
-        <div className="card p-6 space-y-4">
+        <div className="card p-6 space-y-5">
           <div>
             <div className="text-sm font-semibold">WhatsApp delivery</div>
             <p className="mt-1 text-xs text-slate-500">
-              How outgoing messages actually reach your guests.
+              Pick how outgoing messages reach your contacts. You can switch at any time.
             </p>
           </div>
-          <div>
-            <label className="label" htmlFor="provider">
-              Provider
-            </label>
-            <select
-              id="provider"
-              className="input mt-1"
-              value={provider}
-              onChange={(e) =>
-                setProvider(e.target.value as Settings["waProvider"])
-              }
-            >
-              <option value="mock">Mock (demo / testing)</option>
-              <option value="cloud">Meta Cloud API (M2)</option>
-              <option value="baileys">Baileys — on-prem (M3)</option>
-            </select>
-            <p className="mt-1 text-xs text-slate-500">
-              Only Mock is functional in M1. Cloud and Baileys land in later
-              phases.
-            </p>
-          </div>
+
+          <ProviderCard
+            active={data?.waProvider === "mock"}
+            title="Mock"
+            subtitle="Demo / testing — messages are simulated, nothing is sent."
+            onActivate={() => switchProvider("mock")}
+          />
+
+          <ProviderCard
+            active={data?.waProvider === "baileys"}
+            title="WhatsApp Web (Baileys) — Unofficial"
+            subtitle={
+              baileys?.status === "connected"
+                ? `Connected as ${baileys.phoneE164 ?? "your phone"}`
+                : "Scan a QR with your phone. Easy setup, no Meta verification — but ban risk."
+            }
+            badge={
+              baileys?.status === "connected" ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700">
+                  <CheckCircle2 className="h-3 w-3" /> Connected
+                </span>
+              ) : baileys?.status === "logged_out" || baileys?.status === "failed" ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-700">
+                  <AlertTriangle className="h-3 w-3" /> Session lost
+                </span>
+              ) : (
+                <span className="text-xs font-medium text-amber-700">Unofficial</span>
+              )
+            }
+            action={
+              <Link to="/settings/whatsapp-baileys" className="btn-secondary">
+                {baileys?.status === "connected" ? "Manage" : "Connect"}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            }
+            onActivate={() => switchProvider("baileys")}
+            canActivate={baileys?.status === "connected"}
+          />
+
+          <ProviderCard
+            active={data?.waProvider === "cloud"}
+            title="Meta Cloud API — Official"
+            subtitle="Reliable, high-volume. Requires WhatsApp Business verification."
+            action={
+              <Link to="/settings/whatsapp" className="btn-secondary">
+                Connect
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            }
+            onActivate={() => switchProvider("cloud")}
+          />
+        </div>
+
+        <div className="card p-6 space-y-4">
           <div>
             <label className="label" htmlFor="test">
               Default test number
@@ -118,8 +173,8 @@ export function SettingsPage() {
             </p>
           </div>
           <div className="flex justify-end">
-            <button className="btn-primary" onClick={save} disabled={saving}>
-              {saving ? "Saving…" : "Save settings"}
+            <button className="btn-primary" onClick={saveTestPhone} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
@@ -132,6 +187,59 @@ export function SettingsPage() {
         </div>
       </div>
     </Page>
+  );
+}
+
+function ProviderCard(props: {
+  active: boolean;
+  title: string;
+  subtitle: string;
+  action?: React.ReactNode;
+  badge?: React.ReactNode;
+  onActivate: () => void;
+  /** Prevents switching to a provider that isn't ready (e.g. Baileys not paired). */
+  canActivate?: boolean;
+}) {
+  const activatable = props.canActivate ?? true;
+  return (
+    <div
+      className={
+        "rounded-lg border p-4 flex items-start gap-3 " +
+        (props.active
+          ? "border-brand-500 bg-brand-50 ring-1 ring-brand-500"
+          : "border-slate-200 bg-white")
+      }
+    >
+      <button
+        type="button"
+        onClick={() => activatable && !props.active && props.onActivate()}
+        disabled={!activatable}
+        title={
+          !activatable
+            ? "Connect first, then activate this provider."
+            : props.active
+              ? "This provider is active"
+              : "Activate this provider"
+        }
+        className={
+          "mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 " +
+          (props.active
+            ? "border-brand-600 bg-brand-600"
+            : activatable
+              ? "border-slate-300 hover:border-brand-500"
+              : "border-slate-200 cursor-not-allowed")
+        }
+        aria-label={props.active ? "Active" : "Activate"}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-semibold text-slate-900">{props.title}</div>
+          {props.badge}
+        </div>
+        <div className="mt-0.5 text-xs text-slate-600">{props.subtitle}</div>
+      </div>
+      {props.action}
+    </div>
   );
 }
 

@@ -12,6 +12,15 @@ import {
 import { env } from "./env.js";
 import { decryptSecret } from "./crypto.js";
 import { initSentry, captureWorkerError } from "./telemetry.js";
+import {
+  startBaileysControlListener,
+  baileysPairChannel,
+} from "./baileys-control.js";
+import {
+  buildBaileysDeps,
+  loadSessionSnapshot,
+  type SessionSnapshot,
+} from "./baileys-auth.js";
 
 initSentry();
 
@@ -19,22 +28,82 @@ const log = pino({ name: "worker", level: env.LOG_LEVEL });
 const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const pub = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const webhookSub = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
+const controlSub = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const db = getDb(env.DATABASE_URL);
 
-// Per-tenant driver cache. For "mock" provider we share a single instance;
-// for "cloud", each org gets its own driver with its own credentials.
-const driverCache = new Map<string, WaDriver>();
+// Per-tenant driver cache. Mock driver is a singleton; Cloud/Baileys are per-org.
+// Cached sessions are keyed by orgId + a snapshot of the settings.updated_at so
+// a provider switch or re-pair invalidates the cache automatically.
+interface CachedDriver {
+  driver: WaDriver;
+  provider: ProviderName;
+  key: string;
+  session?: SessionSnapshot | null;
+}
+const driverCache = new Map<string, CachedDriver>();
 const mockDriver = createDriver("mock");
 
-async function getDriverForOrg(orgId: string): Promise<WaDriver> {
+// Rolling failure tracker for the Baileys circuit breaker.
+// key: orgId → { successes, failures, resetAt }
+interface FailureWindow {
+  successes: number;
+  failures: number;
+  resetAt: number;
+}
+const failureWindows = new Map<string, FailureWindow>();
+const FAILURE_WINDOW_MS = 30 * 60 * 1000;
+const FAILURE_WINDOW_MIN_SAMPLES = 10;
+const FAILURE_WINDOW_THRESHOLD = 0.2;
+
+function recordOutcome(orgId: string, ok: boolean) {
+  const now = Date.now();
+  let w = failureWindows.get(orgId);
+  if (!w || w.resetAt < now) {
+    w = { successes: 0, failures: 0, resetAt: now + FAILURE_WINDOW_MS };
+    failureWindows.set(orgId, w);
+  }
+  if (ok) w.successes += 1;
+  else w.failures += 1;
+  return w;
+}
+
+function tripCircuitBreaker(w: FailureWindow): boolean {
+  const total = w.successes + w.failures;
+  if (total < FAILURE_WINDOW_MIN_SAMPLES) return false;
+  return w.failures / total >= FAILURE_WINDOW_THRESHOLD;
+}
+
+async function settingsKey(orgId: string): Promise<string> {
+  const [row] = await db.select().from(settings).where(eq(settings.orgId, orgId));
+  return row ? `${row.waProvider}:${row.updatedAt?.getTime() ?? 0}` : "mock:0";
+}
+
+async function evictDriverForOrg(orgId: string): Promise<void> {
   const cached = driverCache.get(orgId);
-  if (cached) return cached;
+  if (!cached) return;
+  driverCache.delete(orgId);
+  if (cached.driver.close) {
+    try {
+      await cached.driver.close();
+    } catch (err) {
+      log.warn({ err, orgId }, "driver close failed");
+    }
+  }
+}
+
+async function getDriverForOrg(orgId: string): Promise<WaDriver> {
+  const nextKey = await settingsKey(orgId);
+  const cached = driverCache.get(orgId);
+  if (cached && cached.key === nextKey) return cached.driver;
+
+  // Settings changed — evict the old driver first.
+  if (cached) await evictDriverForOrg(orgId);
 
   const [row] = await db.select().from(settings).where(eq(settings.orgId, orgId));
   const provider: ProviderName = (row?.waProvider as ProviderName) ?? env.WA_PROVIDER;
 
   if (provider === "mock") {
-    driverCache.set(orgId, mockDriver);
+    driverCache.set(orgId, { driver: mockDriver, provider, key: nextKey });
     return mockDriver;
   }
 
@@ -46,13 +115,38 @@ async function getDriverForOrg(orgId: string): Promise<WaDriver> {
     if (!cfg.accessToken || !cfg.phoneNumberId) {
       throw new Error(`cloud driver missing credentials for org ${orgId}`);
     }
-    // Access tokens are encrypted at rest; decrypt before handing to the driver.
     const accessToken = decryptSecret(cfg.accessToken);
     const drv = createDriver("cloud", {
       cloud: { accessToken, phoneNumberId: cfg.phoneNumberId },
     });
     wireStatusHandler(drv);
-    driverCache.set(orgId, drv);
+    driverCache.set(orgId, { driver: drv, provider, key: nextKey });
+    return drv;
+  }
+
+  if (provider === "baileys") {
+    // Baileys drivers are instantiated lazily here if no pair/rehydrate
+    // event has brought them up yet. We connect synchronously so the first
+    // send either finds a live socket or BullMQ retries.
+    const session = await loadSessionSnapshot(db, orgId);
+    if (!session || session.status !== "connected" || !session.phoneE164) {
+      throw new Error(`baileys driver not connected for org ${orgId}`);
+    }
+    const { state, saveCreds } = await buildBaileysDeps(db, orgId);
+    const drv = createDriver("baileys", {
+      baileys: {
+        orgId,
+        authState: state,
+        saveCreds,
+        onPairingEvent: (e) => {
+          pub.publish(baileysPairChannel(orgId), JSON.stringify(e)).catch(() => {});
+        },
+      },
+    });
+    const anyDrv = drv as WaDriver & { connect?: () => Promise<void> };
+    if (anyDrv.connect) await anyDrv.connect();
+    wireStatusHandler(drv);
+    driverCache.set(orgId, { driver: drv, provider, key: nextKey, session });
     return drv;
   }
 
@@ -185,19 +279,69 @@ async function maybeFinalizeCampaign(orgId: string, campaignId: string) {
 }
 
 /**
- * Per-org token-bucket rate limiter. Each org gets N tokens per window.
- * Derived from Meta tier in settings (task 12 will wire settings.waConfig.msgsPerSecond);
- * defaults to 80/min (Meta's Tier 1) when missing.
+ * Provider- and session-age-aware per-org rate limit. Baileys orgs get lower
+ * ceilings that widen as the session earns trust; Cloud/Mock use the
+ * historical 80/min default (Meta Tier 1). `custom` honors a per-org override.
  */
-async function acquireOrgToken(orgId: string): Promise<boolean> {
+function baileysRate(session: SessionSnapshot | null | undefined): number {
+  if (!session) return env.WORKER_BAILEYS_MSGS_PER_MINUTE_NEW;
+  if (session.throttleMode === "custom" && session.customRatePerMin) {
+    return Math.min(session.customRatePerMin, 60);
+  }
+  const connectedAt = session.connectedAt?.getTime() ?? Date.now();
+  const ageDays = Math.max(0, (Date.now() - connectedAt) / (1000 * 60 * 60 * 24));
+  if (ageDays < 1) return env.WORKER_BAILEYS_MSGS_PER_MINUTE_NEW;
+  if (ageDays < 7 || session.throttleMode === "careful") {
+    return env.WORKER_BAILEYS_MSGS_PER_MINUTE_WEEK;
+  }
+  return env.WORKER_BAILEYS_MSGS_PER_MINUTE_STEADY;
+}
+
+async function acquireOrgToken(
+  orgId: string,
+  provider: ProviderName,
+  session: SessionSnapshot | null | undefined,
+): Promise<boolean> {
   const windowSec = 60;
-  const maxPerWindow = Number(env.WORKER_ORG_MSGS_PER_MINUTE ?? 80);
+  const maxPerWindow =
+    provider === "baileys" ? baileysRate(session) : Number(env.WORKER_ORG_MSGS_PER_MINUTE ?? 80);
   const key = `worker:rl:${orgId}`;
   const count = await connection.incr(key);
   if (count === 1) {
     await connection.expire(key, windowSec);
   }
   return count <= maxPerWindow;
+}
+
+/**
+ * Per-day cap: increments a UTC-day key; if over the cap, the job is deferred
+ * to the next day rather than failed. Applies to Baileys only for now —
+ * Cloud tiers handle rate enforcement themselves.
+ */
+async function checkDailyCap(
+  orgId: string,
+  session: SessionSnapshot | null | undefined,
+): Promise<{ allowed: boolean; msUntilReset: number }> {
+  if (!session) return { allowed: true, msUntilReset: 0 };
+  const cap = Math.min(session.dailyCap, 1000);
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `worker:daily:${orgId}:${day}`;
+  const count = await connection.incr(key);
+  if (count === 1) {
+    // Reset at next UTC midnight.
+    const now = new Date();
+    const next = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+    );
+    const ttl = Math.ceil((next.getTime() - now.getTime()) / 1000);
+    await connection.expire(key, ttl);
+  }
+  if (count <= cap) return { allowed: true, msUntilReset: 0 };
+  const now = new Date();
+  const next = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+  );
+  return { allowed: false, msUntilReset: next.getTime() - now.getTime() };
 }
 
 new Worker(
@@ -216,22 +360,39 @@ new Worker(
       return;
     }
 
-    // Per-org fairness: if the org is over quota, delay this job so other
-    // tenants can make progress. BullMQ will re-enqueue after the delay.
-    const allowed = await acquireOrgToken(orgId);
+    // Resolve (and cache) the driver up front so we can size the rate limit
+    // for this org's provider. We also need to know if Baileys is banned
+    // before burning a BullMQ attempt.
+    const driver = await getDriverForOrg(orgId);
+    const cacheEntry = driverCache.get(orgId);
+    const provider = cacheEntry?.provider ?? ("mock" as ProviderName);
+    const session = cacheEntry?.session ?? null;
+
+    if (provider === "baileys") {
+      const snap = session ?? (await loadSessionSnapshot(db, orgId));
+      if (snap?.bannedSuspectedAt) {
+        log.warn({ orgId, messageId }, "baileys ban suspected; refusing send");
+        throw new Error("baileys_ban_suspected");
+      }
+      // Daily cap check — if over, defer.
+      const cap = await checkDailyCap(orgId, snap);
+      if (!cap.allowed) {
+        await job.moveToDelayed(Date.now() + cap.msUntilReset, job.token);
+        throw new Error("daily_cap_reached");
+      }
+    }
+
+    const allowed = await acquireOrgToken(orgId, provider, session);
     if (!allowed) {
-      // Delay up to 5s with jitter so we don't thundering-herd on the next window.
       const delay = 1000 + Math.floor(Math.random() * 4000);
       await job.moveToDelayed(Date.now() + delay, job.token);
-      throw new Error("org_rate_limited"); // re-entrant; BullMQ will retry after delay
+      throw new Error("org_rate_limited");
     }
 
     const result = await asTenant(orgId, async (tx) => {
       const [msg] = await tx.select().from(messages).where(eq(messages.id, messageId));
       if (!msg) return { kind: "skip" as const };
 
-      // Idempotency: if the message has already been sent (providerMessageId set
-      // and status != queued), a previous attempt succeeded. Skip re-sending.
       if (msg.providerMessageId && msg.status !== "queued") {
         log.info({ messageId, status: msg.status }, "skipping already-sent message (idempotency)");
         return { kind: "skip" as const };
@@ -249,8 +410,7 @@ new Worker(
     if (result.kind === "skip") return;
 
     try {
-      const tenantDriver = await getDriverForOrg(orgId);
-      const res = await tenantDriver.sendText(result.phone, result.body);
+      const res = await driver.sendText(result.phone, result.body);
       inflight.set(res.providerMessageId, { orgId, messageId, campaignId });
       await asTenant(orgId, async (tx) => {
         await tx
@@ -274,6 +434,7 @@ new Worker(
           status: "sent",
         }),
       );
+      if (provider === "baileys") recordOutcome(orgId, true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error({ err: message, messageId }, "send failed");
@@ -298,6 +459,27 @@ new Worker(
           status: "failed",
         }),
       );
+      if (provider === "baileys") {
+        const w = recordOutcome(orgId, false);
+        if (tripCircuitBreaker(w)) {
+          // Pause the campaign so a broken session doesn't burn the remaining
+          // recipients. User can resume from the UI once the session is back.
+          log.warn({ orgId, campaignId, window: w }, "baileys circuit breaker tripped");
+          await asTenant(orgId, async (tx) => {
+            await tx
+              .update(campaigns)
+              .set({ status: "cancelled", finishedAt: new Date() })
+              .where(eq(campaigns.id, campaignId));
+          });
+          await pub.publish(
+            baileysPairChannel(orgId),
+            JSON.stringify({
+              type: "failed",
+              reason: `circuit_breaker_${Math.round((w.failures / (w.successes + w.failures)) * 100)}pct`,
+            }),
+          );
+        }
+      }
       await maybeFinalizeCampaign(orgId, campaignId);
       throw err;
     }
@@ -308,5 +490,51 @@ new Worker(
 // Kick off the template-approval sync loop (runs every 5 min per tenant).
 import { startTemplateSyncLoop } from "./template-sync.js";
 startTemplateSyncLoop(db);
+
+// Start the Baileys control listener (pair / disconnect / reconnect).
+startBaileysControlListener({
+  db,
+  pub,
+  sub: controlSub,
+  log,
+  onDriverReady: (orgId, driver) => {
+    wireStatusHandler(driver);
+    // The control listener just brought up a new Baileys socket. Replace
+    // whatever was cached (with the same key generator so cache coherency
+    // holds) so subsequent sends use it immediately.
+    settingsKey(orgId).then((key) => {
+      driverCache.set(orgId, { driver, provider: "baileys", key });
+      // Refresh the session snapshot so rate limits see the new connectedAt.
+      loadSessionSnapshot(db, orgId)
+        .then((snap) => {
+          const cached = driverCache.get(orgId);
+          if (cached) cached.session = snap;
+        })
+        .catch(() => {});
+    });
+  },
+  onDriverEvicted: evictDriverForOrg,
+}).catch((err) => {
+  log.error({ err }, "failed to start baileys control listener");
+});
+
+// SIGTERM: close every open driver so Baileys WebSockets terminate cleanly.
+async function gracefulShutdown(signal: string) {
+  log.info({ signal }, "worker shutdown");
+  const closes: Promise<void>[] = [];
+  for (const [, entry] of driverCache) {
+    if (entry.driver.close) {
+      closes.push(entry.driver.close().catch(() => {}));
+    }
+  }
+  await Promise.all(closes);
+  await connection.quit().catch(() => {});
+  await pub.quit().catch(() => {});
+  await webhookSub.quit().catch(() => {});
+  await controlSub.quit().catch(() => {});
+  process.exit(0);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 log.info(`worker running (default provider=${env.WA_PROVIDER}; per-org drivers resolved lazily)`);

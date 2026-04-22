@@ -7,10 +7,19 @@ import {
   integer,
   jsonb,
   boolean,
+  customType,
   index,
   primaryKey,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+// Buffer-typed bytea column. Drizzle's default `customType` returning Buffer
+// is the idiomatic way to read/write bytea without string-encoding detours.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 import { relations } from "drizzle-orm";
 
 // Hotel-specific status enum. The pg type name stays "guest_status" to avoid
@@ -362,6 +371,63 @@ export const passwordResetTokens = pgTable(
   },
 );
 
+// Baileys (WhatsApp Web) per-org session — see migration 0012.
+export const waBaileysSessions = pgTable("wa_baileys_sessions", {
+  orgId: uuid("org_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  creds: bytea("creds"),
+  // pending | connected | logged_out | failed
+  status: text("status").notNull().default("pending"),
+  phoneE164: text("phone_e164"),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  // careful | balanced | custom
+  throttleMode: text("throttle_mode").notNull().default("careful"),
+  customRatePerMin: integer("custom_rate_per_min"),
+  dailyCap: integer("daily_cap").notNull().default(500),
+  // warn | block | allow
+  coldPolicy: text("cold_policy").notNull().default("warn"),
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  bannedSuspectedAt: timestamp("banned_suspected_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const waBaileysKeys = pgTable(
+  "wa_baileys_keys",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    keyType: text("key_type").notNull(),
+    keyId: text("key_id").notNull(),
+    value: bytea("value").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.orgId, t.keyType, t.keyId] }),
+    orgTypeIdx: index("wa_baileys_keys_org_type_idx").on(t.orgId, t.keyType),
+  }),
+);
+
+// Inbound-touch log — see migration 0013. Powers the pre-flight "has this
+// recipient messaged us before?" check. Never stores message bodies.
+export const waInboundTouches = pgTable(
+  "wa_inbound_touches",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fromE164: text("from_e164").notNull(),
+    firstAt: timestamp("first_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAt: timestamp("last_at", { withTimezone: true }).notNull().defaultNow(),
+    count: integer("count").notNull().default(1),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.orgId, t.fromE164] }),
+    orgLastIdx: index("wa_inbound_touches_org_last_idx").on(t.orgId, t.lastAt),
+  }),
+);
+
 export const auditEvents = pgTable(
   "audit_events",
   {
@@ -498,6 +564,9 @@ export type Campaign = typeof campaigns.$inferSelect;
 export type CampaignAudience = typeof campaignAudiences.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Settings = typeof settings.$inferSelect;
+export type WaBaileysSession = typeof waBaileysSessions.$inferSelect;
+export type WaBaileysKey = typeof waBaileysKeys.$inferSelect;
+export type WaInboundTouch = typeof waInboundTouches.$inferSelect;
 export type RefreshToken = typeof refreshTokens.$inferSelect;
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;

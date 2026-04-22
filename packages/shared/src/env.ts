@@ -54,6 +54,11 @@ const serverEnvObject = z.object({
 
   // Per-org throttle in the worker (derived from Meta tier; defaults to tier 1).
   WORKER_ORG_MSGS_PER_MINUTE: z.coerce.number().int().positive().default(80),
+  // Baileys is unofficial and ban-risky: lower defaults that widen as a
+  // session ages. Each covers a warm-up bucket.
+  WORKER_BAILEYS_MSGS_PER_MINUTE_NEW: z.coerce.number().int().positive().default(15),
+  WORKER_BAILEYS_MSGS_PER_MINUTE_WEEK: z.coerce.number().int().positive().default(30),
+  WORKER_BAILEYS_MSGS_PER_MINUTE_STEADY: z.coerce.number().int().positive().default(40),
 
   // 32-byte base64 key used to encrypt per-tenant Meta access tokens at rest.
   // Generate with: openssl rand -base64 32

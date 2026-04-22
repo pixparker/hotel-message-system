@@ -10,3 +10,9 @@ export const sendMessageQueue = new Queue("send-message", { connection: redis })
 export function campaignChannel(campaignId: string): string {
   return `campaign:${campaignId}`;
 }
+
+/** Shared constants used by both the API and worker to coordinate Baileys. */
+export const WA_CONTROL_CHANNEL = "wa:control";
+export function baileysPairChannel(orgId: string): string {
+  return `wa:pair:${orgId}`;
+}

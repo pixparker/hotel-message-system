@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { env } from "./env.js";
 
 const ALGO = "aes-256-gcm";
+const IV_BYTES = 12;
 const ENC_PREFIX = "enc:v1:";
 
 const key = crypto
@@ -28,4 +29,28 @@ export function decryptSecret(value: string): string {
     decipher.final(),
   ]);
   return pt.toString("utf8");
+}
+
+/**
+ * Bytes variants used by the Baileys auth-state adapter to persist Signal
+ * key material. Layout matches apps/api/src/crypto.ts: [IV][tag][ct].
+ */
+export function encryptBytes(plaintext: Buffer): Buffer {
+  const iv = crypto.randomBytes(IV_BYTES);
+  const cipher = crypto.createCipheriv(ALGO, key, iv);
+  const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, ct]);
+}
+
+export function decryptBytes(blob: Buffer): Buffer {
+  if (blob.length < IV_BYTES + 16) {
+    throw new Error("invalid encrypted bytes blob: too short");
+  }
+  const iv = blob.subarray(0, IV_BYTES);
+  const tag = blob.subarray(IV_BYTES, IV_BYTES + 16);
+  const ct = blob.subarray(IV_BYTES + 16);
+  const decipher = crypto.createDecipheriv(ALGO, key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]);
 }

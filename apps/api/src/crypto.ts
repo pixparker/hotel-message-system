@@ -50,3 +50,28 @@ export function decryptSecret(value: string): string {
 export function isEncrypted(value: unknown): value is string {
   return typeof value === "string" && value.startsWith(ENC_PREFIX);
 }
+
+/**
+ * Bytes variants of the above — same AES-256-GCM scheme, raw binary I/O.
+ * Output layout: [12-byte IV][16-byte auth tag][ciphertext]. This single-blob
+ * format is easier to store in a bytea column than the prefixed string form.
+ */
+export function encryptBytes(plaintext: Buffer): Buffer {
+  const iv = crypto.randomBytes(IV_BYTES);
+  const cipher = crypto.createCipheriv(ALGO, key, iv);
+  const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, ct]);
+}
+
+export function decryptBytes(blob: Buffer): Buffer {
+  if (blob.length < IV_BYTES + 16) {
+    throw new Error("invalid encrypted bytes blob: too short");
+  }
+  const iv = blob.subarray(0, IV_BYTES);
+  const tag = blob.subarray(IV_BYTES, IV_BYTES + 16);
+  const ct = blob.subarray(IV_BYTES + 16);
+  const decipher = crypto.createDecipheriv(ALGO, key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]);
+}
