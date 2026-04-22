@@ -1,5 +1,5 @@
 import { Worker } from "bullmq";
-import IORedis from "ioredis";
+import { Redis as IORedis } from "ioredis";
 import pino from "pino";
 import { eq, sql } from "drizzle-orm";
 import { getDb, messages, campaigns, settings } from "@hms/db";
