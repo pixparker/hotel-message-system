@@ -1,0 +1,8 @@
+{
+	email {$ACME_EMAIL}
+	admin 0.0.0.0:2019
+}
+
+# Per-MVP site files live in /etc/caddy/sites/*.caddy (bind-mounted from ./sites).
+# `clientora mvp:add` and `clientora deploy` write/update these and trigger `caddy reload`.
+import /etc/caddy/sites/*.caddy

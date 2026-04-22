@@ -1,0 +1,505 @@
+#!/usr/bin/env bash
+# clientora — MVP-pool operations CLI. Runs on the server.
+#
+# Provider-agnostic. Needs: docker, docker compose, git, openssl, awk, jq.
+# Layout it assumes (see bootstrap.sh):
+#   /srv/infra/            shared Caddy + Postgres + Redis
+#   /srv/infra/sites/      per-MVP Caddy snippets
+#   /srv/apps/<mvp>/       per-MVP stack (repo/, .env, .meta)
+#
+# Entry points are stable. Implementation of any subcommand may evolve.
+
+set -euo pipefail
+
+# ---------- paths + constants ---------------------------------------------
+SRV_ROOT="${SRV_ROOT:-/srv}"
+INFRA_DIR="$SRV_ROOT/infra"
+APPS_DIR="$SRV_ROOT/apps"
+SITES_DIR="$INFRA_DIR/sites"
+BACKUPS_DIR="$INFRA_DIR/backups"
+INFRA_COMPOSE="$INFRA_DIR/compose.yaml"
+INFRA_ENV="$INFRA_DIR/.env"
+FRAMEWORK_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+TEMPLATES_DIR="$FRAMEWORK_ROOT/templates"
+
+# ---------- style helpers -------------------------------------------------
+if [[ -t 1 ]]; then
+	C_BLUE=$'\033[1;34m'; C_GREEN=$'\033[1;32m'; C_YELLOW=$'\033[1;33m'
+	C_RED=$'\033[1;31m'; C_DIM=$'\033[2m'; C_RESET=$'\033[0m'
+else
+	C_BLUE=""; C_GREEN=""; C_YELLOW=""; C_RED=""; C_DIM=""; C_RESET=""
+fi
+log()  { printf '%s[clientora]%s %s\n' "$C_BLUE" "$C_RESET" "$*"; }
+ok()   { printf '%s✓%s %s\n' "$C_GREEN" "$C_RESET" "$*"; }
+warn() { printf '%s[clientora]%s %s\n' "$C_YELLOW" "$C_RESET" "$*" >&2; }
+die()  { printf '%s[clientora]%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
+
+# ---------- shared helpers ------------------------------------------------
+require_infra() {
+	[[ -f "$INFRA_COMPOSE" && -f "$INFRA_ENV" ]] || die "infra not installed. Run: clientora infra:install"
+}
+
+load_mvp_meta() {
+	local name="$1" meta="$APPS_DIR/$1/.meta"
+	[[ -f "$meta" ]] || die "MVP '$name' not registered (expected $meta). Run: clientora mvp:add"
+	# shellcheck disable=SC1090
+	set -a; . "$meta"; set +a
+}
+
+rand_b64() { openssl rand -base64 "${1:-32}" | tr -d '\n=/+' | cut -c1-"${1:-32}"; }
+
+render_template() {
+	local tpl="$1"; shift
+	local content; content=$(<"$tpl")
+	while (($#)); do
+		local key="${1%%=*}" val="${1#*=}"
+		content="${content//\{\{${key}\}\}/${val}}"
+		shift
+	done
+	printf '%s' "$content"
+}
+
+compose_mvp() {
+	# usage: compose_mvp <name> <compose subcommand...>
+	local name="$1"; shift
+	load_mvp_meta "$name"
+	(
+		cd "$APPS_DIR/$name/repo"
+		docker compose \
+			--project-name "$PROJECT_NAME" \
+			--project-directory "$APPS_DIR/$name/repo" \
+			-f "$COMPOSE_FILE" \
+			"$@"
+	)
+}
+
+compose_infra() {
+	require_infra
+	docker compose --project-name clientora-infra \
+		--project-directory "$INFRA_DIR" \
+		-f "$INFRA_COMPOSE" --env-file "$INFRA_ENV" "$@"
+}
+
+pg_admin_exec() {
+	# run psql as the shared admin inside the postgres container
+	require_infra
+	local admin_user admin_pw
+	admin_user=$(grep -E '^POSTGRES_ADMIN_USER=' "$INFRA_ENV" | cut -d= -f2-)
+	admin_pw=$(grep -E '^POSTGRES_ADMIN_PASSWORD=' "$INFRA_ENV" | cut -d= -f2-)
+	docker compose --project-name clientora-infra \
+		--project-directory "$INFRA_DIR" \
+		-f "$INFRA_COMPOSE" --env-file "$INFRA_ENV" \
+		exec -T -e PGPASSWORD="$admin_pw" postgres \
+		psql -v ON_ERROR_STOP=1 -U "$admin_user" -d postgres "$@"
+}
+
+# ---------- subcommands: infra --------------------------------------------
+cmd_infra_install() {
+	# Copies the framework's infra/ into /srv/infra if it's not already there,
+	# and generates a fresh .env if absent.
+	need docker; need openssl
+	mkdir -p "$INFRA_DIR" "$SITES_DIR" "$BACKUPS_DIR" "$APPS_DIR"
+	cp -n "$FRAMEWORK_ROOT/infra/compose.yaml" "$INFRA_COMPOSE" || true
+	cp -n "$FRAMEWORK_ROOT/infra/Caddyfile"    "$INFRA_DIR/Caddyfile" || true
+	if [[ ! -f "$INFRA_ENV" ]]; then
+		log "generating $INFRA_ENV"
+		cat > "$INFRA_ENV" <<EOF
+ACME_EMAIL=${ACME_EMAIL:-admin@clientora.net}
+POSTGRES_ADMIN_USER=clientora_admin
+POSTGRES_ADMIN_PASSWORD=$(rand_b64 32)
+EOF
+		chmod 600 "$INFRA_ENV"
+		ok "wrote fresh admin credentials to $INFRA_ENV"
+	fi
+	# seed default site file so Caddyfile glob has something
+	touch "$SITES_DIR/.keep"
+	ok "infra installed at $INFRA_DIR"
+}
+
+cmd_infra_up()      { compose_infra up -d; ok "infra up"; }
+cmd_infra_down()    { compose_infra down; ok "infra down"; }
+cmd_infra_restart() { compose_infra restart; ok "infra restarted"; }
+cmd_infra_logs()    { compose_infra logs -f --tail=100 "$@"; }
+cmd_infra_ps()      { compose_infra ps; }
+cmd_infra_reload_caddy() {
+	# Caddy reloads config in-place without dropping TLS or connections.
+	compose_infra exec caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null
+	ok "caddy reloaded"
+}
+
+# ---------- subcommands: MVP lifecycle ------------------------------------
+cmd_mvp_keygen() {
+	# Pre-generate a per-MVP read-only deploy key. Paste the printed pubkey
+	# into GitHub → Settings → Deploy keys for the MVP's repo.
+	local name="${1:-}"; [[ -n "$name" ]] || die "usage: clientora mvp:keygen <name>"
+	local ssh_dir="$APPS_DIR/$name/.ssh"
+	local key="$ssh_dir/id_ed25519"
+	mkdir -p "$ssh_dir"
+	chmod 700 "$ssh_dir"
+	if [[ -f "$key" ]]; then
+		warn "key already exists at $key — printing existing pubkey"
+	else
+		ssh-keygen -t ed25519 -f "$key" -N "" -C "deploy-$name@clientora" >/dev/null
+		chmod 600 "$key"
+		ok "generated $key"
+	fi
+	echo
+	echo "Add this to GitHub → repo Settings → Deploy keys (read-only is enough):"
+	echo
+	cat "${key}.pub"
+	echo
+	echo "Then run:  clientora mvp:add $name --domain ... --repo git@github.com:OWNER/REPO.git"
+}
+
+mvp_ssh_command() {
+	# Build a GIT_SSH_COMMAND that uses the MVP's deploy key if present.
+	local name="$1"
+	local key="$APPS_DIR/$name/.ssh/id_ed25519"
+	if [[ -f "$key" ]]; then
+		printf 'ssh -i %q -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new' "$key"
+	else
+		printf 'ssh -o StrictHostKeyChecking=accept-new'
+	fi
+}
+
+cmd_mvp_add() {
+	# clientora mvp:add <name> --domain <d> --repo <url> [--branch main]
+	#                  [--db-name X] [--db-user X] [--redis-db N]
+	local name="" domain="" repo_url="" branch="main"
+	local db_name="" db_user="" redis_db=""
+	local compose_file="deploy/compose.mvp-pool.yaml"
+	local api_service="api" api_port="4000" web_service="web" web_port="80"
+
+	while (($#)); do
+		case "$1" in
+			--domain) domain="$2"; shift 2 ;;
+			--repo) repo_url="$2"; shift 2 ;;
+			--branch) branch="$2"; shift 2 ;;
+			--db-name) db_name="$2"; shift 2 ;;
+			--db-user) db_user="$2"; shift 2 ;;
+			--redis-db) redis_db="$2"; shift 2 ;;
+			--compose-file) compose_file="$2"; shift 2 ;;
+			--api-service) api_service="$2"; shift 2 ;;
+			--api-port) api_port="$2"; shift 2 ;;
+			--web-service) web_service="$2"; shift 2 ;;
+			--web-port) web_port="$2"; shift 2 ;;
+			-*) die "unknown flag: $1" ;;
+			*) [[ -z "$name" ]] && name="$1" || die "unexpected arg: $1"; shift ;;
+		esac
+	done
+	[[ -n "$name"     ]] || die "missing <name>"
+	[[ -n "$domain"   ]] || die "missing --domain"
+	[[ -n "$repo_url" ]] || die "missing --repo"
+	require_infra
+
+	# naming defaults
+	local slug; slug="$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | sed 's/_\+/_/g; s/^_//; s/_$//')"
+	[[ -n "$db_name" ]] || db_name="$slug"
+	[[ -n "$db_user" ]] || db_user="$slug"
+	if [[ -z "$redis_db" ]]; then
+		# pick first unused index in 0..15
+		local used=""
+		for m in "$APPS_DIR"/*/.meta; do
+			[[ -f "$m" ]] || continue
+			used+=" $(grep -E '^REDIS_DB_INDEX=' "$m" | cut -d= -f2-)"
+		done
+		for i in $(seq 0 15); do
+			if [[ " $used " != *" $i "* ]]; then redis_db="$i"; break; fi
+		done
+		[[ -n "$redis_db" ]] || die "all 16 Redis DB indices are taken — switch to key-prefix isolation"
+	fi
+
+	local app_dir="$APPS_DIR/$name"
+	[[ ! -f "$app_dir/.meta" ]] || die "MVP '$name' already registered (meta at $app_dir/.meta)"
+	mkdir -p "$app_dir/backups"
+
+	# 1. create DB + role
+	log "creating Postgres role '$db_user' and database '$db_name'"
+	local db_pw; db_pw=$(rand_b64 32)
+	pg_admin_exec <<EOF
+CREATE ROLE "$db_user" WITH LOGIN PASSWORD '$db_pw';
+CREATE DATABASE "$db_name" OWNER "$db_user";
+REVOKE ALL ON DATABASE "$db_name" FROM PUBLIC;
+GRANT ALL PRIVILEGES ON DATABASE "$db_name" TO "$db_user";
+EOF
+
+	# 2. clone repo (uses per-MVP deploy key if present — see `mvp:keygen`)
+	log "cloning $repo_url ($branch) -> $app_dir/repo"
+	GIT_SSH_COMMAND="$(mvp_ssh_command "$name")" \
+		git clone --branch "$branch" "$repo_url" "$app_dir/repo"
+
+	# 3. write .env from template
+	local jwt_a jwt_r secenc bootpw
+	jwt_a=$(rand_b64 48); jwt_r=$(rand_b64 48); secenc=$(rand_b64 48); bootpw=$(rand_b64 20)
+	render_template "$TEMPLATES_DIR/mvp.env.tpl" \
+		"DB_USER=$db_user" "DB_PASSWORD=$db_pw" "DB_NAME=$db_name" \
+		"REDIS_DB_INDEX=$redis_db" "DOMAIN=$domain" \
+		"JWT_ACCESS_SECRET=$jwt_a" "JWT_REFRESH_SECRET=$jwt_r" \
+		"SECRETS_ENCRYPTION_KEY=$secenc" "BOOTSTRAP_ADMIN_PASSWORD=$bootpw" \
+		> "$app_dir/.env"
+	chmod 600 "$app_dir/.env"
+
+	# 4. write meta
+	cat > "$app_dir/.meta" <<EOF
+NAME=$name
+DOMAIN=$domain
+REPO=$repo_url
+BRANCH=$branch
+DB_NAME=$db_name
+DB_USER=$db_user
+REDIS_DB_INDEX=$redis_db
+COMPOSE_FILE=$compose_file
+PROJECT_NAME=mvp-$name
+API_SERVICE=$api_service
+API_PORT=$api_port
+WEB_SERVICE=$web_service
+WEB_PORT=$web_port
+EOF
+	chmod 600 "$app_dir/.meta"
+
+	# 5. write Caddy site snippet
+	render_template "$TEMPLATES_DIR/caddy-site.caddy.tpl" \
+		"DOMAIN=$domain" \
+		"API_HOST=mvp-${name}-${api_service}-1" "API_PORT=$api_port" \
+		"WEB_HOST=mvp-${name}-${web_service}-1" "WEB_PORT=$web_port" \
+		> "$SITES_DIR/$name.caddy"
+
+	ok "MVP '$name' registered."
+	echo "  domain:       $domain"
+	echo "  database:     $db_name (user $db_user)"
+	echo "  redis db:     $redis_db"
+	echo "  admin seed:   email=admin@$domain  password=$bootpw"
+	echo
+	echo "Next: clientora deploy $name"
+}
+
+cmd_mvp_list() {
+	printf '%-20s %-40s %-8s %-15s\n' NAME DOMAIN REDIS_DB DB_NAME
+	for m in "$APPS_DIR"/*/.meta; do
+		[[ -f "$m" ]] || continue
+		# shellcheck disable=SC1090
+		( set -a; . "$m"; set +a
+		  printf '%-20s %-40s %-8s %-15s\n' "$NAME" "$DOMAIN" "$REDIS_DB_INDEX" "$DB_NAME" )
+	done
+}
+
+cmd_mvp_remove() {
+	# destructive — explicit confirmation required
+	local name="${1:-}"; [[ -n "$name" ]] || die "usage: clientora mvp:remove <name> --yes"
+	local app_dir="$APPS_DIR/$name"
+	[[ -d "$app_dir" ]] || die "no such MVP: $name"
+	[[ "${2:-}" == "--yes" ]] || die "refusing: re-run with --yes to confirm destructive removal"
+	load_mvp_meta "$name"
+
+	log "stopping stack"
+	compose_mvp "$name" down --remove-orphans || true
+
+	log "removing Caddy site"
+	rm -f "$SITES_DIR/$name.caddy"
+	cmd_infra_reload_caddy
+
+	log "backing up database to $BACKUPS_DIR/${DB_NAME}-removed-$(date +%Y%m%d-%H%M%S).sql.gz"
+	cmd_db_backup "$name"
+
+	log "dropping database + role"
+	pg_admin_exec <<EOF
+DROP DATABASE IF EXISTS "$DB_NAME";
+DROP ROLE IF EXISTS "$DB_USER";
+EOF
+
+	log "removing $app_dir"
+	rm -rf "$app_dir"
+	ok "MVP '$name' removed."
+}
+
+# ---------- subcommands: deploy + runtime ---------------------------------
+cmd_deploy() {
+	local name="${1:-}"; [[ -n "$name" ]] || die "usage: clientora deploy <name>"
+	load_mvp_meta "$name"
+	local app_dir="$APPS_DIR/$name"
+
+	log "$name: git fetch + checkout $BRANCH"
+	(
+		cd "$app_dir/repo"
+		export GIT_SSH_COMMAND
+		GIT_SSH_COMMAND="$(mvp_ssh_command "$name")"
+		git fetch --prune origin
+		git checkout "$BRANCH"
+		git reset --hard "origin/$BRANCH"
+	)
+
+	local sha; sha=$(cd "$app_dir/repo" && git rev-parse --short HEAD)
+	log "$name: building images at $sha"
+	compose_mvp "$name" build --pull
+
+	log "$name: running DB migrations"
+	cmd_migrate "$name"
+
+	log "$name: starting services"
+	compose_mvp "$name" up -d --remove-orphans
+
+	log "$name: reloading shared Caddy"
+	cmd_infra_reload_caddy
+
+	ok "$name deployed @ $sha  →  https://$DOMAIN"
+}
+
+cmd_migrate() {
+	local name="${1:-}"; [[ -n "$name" ]] || die "usage: clientora migrate <name>"
+	load_mvp_meta "$name"
+	# Drizzle migrator via tsx — try hoisted (packages/db/node_modules) first,
+	# then root node_modules, so we don't depend on pnpm's placement choice.
+	compose_mvp "$name" run --rm --no-deps --entrypoint "" "$API_SERVICE" \
+		sh -c 'for p in packages/db/node_modules/.bin/tsx node_modules/.bin/tsx; do [ -x "$p" ] && exec "$p" packages/db/src/migrate.ts; done; echo "tsx not found in image" >&2; exit 1'
+}
+
+cmd_logs() {
+	local name="${1:-}"; shift || true
+	[[ -n "$name" ]] || die "usage: clientora logs <name> [service]"
+	load_mvp_meta "$name"
+	compose_mvp "$name" logs -f --tail=200 "$@"
+}
+
+cmd_ps() {
+	local name="${1:-}"; [[ -n "$name" ]] || die "usage: clientora ps <name>"
+	compose_mvp "$name" ps
+}
+
+cmd_restart() {
+	local name="${1:-}"; shift || true
+	[[ -n "$name" ]] || die "usage: clientora restart <name> [service]"
+	compose_mvp "$name" restart "$@"
+	ok "restarted"
+}
+
+cmd_stop()  { local n="${1:?usage: clientora stop <name>}";  compose_mvp "$n" stop;  ok "stopped $n"; }
+cmd_start() { local n="${1:?usage: clientora start <name>}"; compose_mvp "$n" start; ok "started $n"; }
+
+cmd_rollback() {
+	# clientora rollback <name> [git-ref]. If ref omitted, uses HEAD~1.
+	local name="${1:-}"; local ref="${2:-HEAD~1}"
+	[[ -n "$name" ]] || die "usage: clientora rollback <name> [git-ref]"
+	load_mvp_meta "$name"
+	local app_dir="$APPS_DIR/$name"
+	log "$name: rolling back to $ref"
+	(cd "$app_dir/repo" && git checkout "$ref" --detach)
+	compose_mvp "$name" build --pull
+	compose_mvp "$name" up -d --remove-orphans
+	ok "rolled back — run 'clientora migrate $name' manually if the revision needed schema changes"
+}
+
+# ---------- subcommands: db -----------------------------------------------
+cmd_db_psql() {
+	local name="${1:-}"; [[ -n "$name" ]] || die "usage: clientora db:psql <name>"
+	load_mvp_meta "$name"
+	local admin_user admin_pw
+	admin_user=$(grep -E '^POSTGRES_ADMIN_USER=' "$INFRA_ENV" | cut -d= -f2-)
+	admin_pw=$(grep -E '^POSTGRES_ADMIN_PASSWORD=' "$INFRA_ENV" | cut -d= -f2-)
+	compose_infra exec -e PGPASSWORD="$admin_pw" postgres \
+		psql -U "$admin_user" -d "$DB_NAME"
+}
+
+cmd_db_backup() {
+	local name="${1:-}"; [[ -n "$name" ]] || die "usage: clientora db:backup <name>"
+	load_mvp_meta "$name"
+	local out="$APPS_DIR/$name/backups/${DB_NAME}-$(date +%Y%m%d-%H%M%S).sql.gz"
+	mkdir -p "$(dirname "$out")"
+	local admin_user admin_pw
+	admin_user=$(grep -E '^POSTGRES_ADMIN_USER=' "$INFRA_ENV" | cut -d= -f2-)
+	admin_pw=$(grep -E '^POSTGRES_ADMIN_PASSWORD=' "$INFRA_ENV" | cut -d= -f2-)
+	compose_infra exec -T -e PGPASSWORD="$admin_pw" postgres \
+		pg_dump --clean --if-exists -U "$admin_user" "$DB_NAME" | gzip > "$out"
+	ok "backup -> $out ($(du -h "$out" | cut -f1))"
+}
+
+cmd_db_restore() {
+	local name="${1:-}"; local file="${2:-}"
+	[[ -n "$name" && -n "$file" && -f "$file" ]] || die "usage: clientora db:restore <name> <path-to-.sql(.gz)>"
+	load_mvp_meta "$name"
+	local admin_user admin_pw
+	admin_user=$(grep -E '^POSTGRES_ADMIN_USER=' "$INFRA_ENV" | cut -d= -f2-)
+	admin_pw=$(grep -E '^POSTGRES_ADMIN_PASSWORD=' "$INFRA_ENV" | cut -d= -f2-)
+	local reader="cat"; [[ "$file" == *.gz ]] && reader="gzip -dc"
+	$reader "$file" | compose_infra exec -T -e PGPASSWORD="$admin_pw" postgres \
+		psql -U "$admin_user" -d "$DB_NAME"
+	ok "restored $file -> $DB_NAME"
+}
+
+# ---------- subcommands: status -------------------------------------------
+cmd_status() {
+	echo "=== infra ===";    compose_infra ps 2>/dev/null || echo "(infra not up)"
+	echo; echo "=== MVPs ==="; cmd_mvp_list
+	echo; echo "=== disk ==="; df -h /srv 2>/dev/null || true
+}
+
+# ---------- dispatch ------------------------------------------------------
+usage() {
+	cat <<'EOF'
+clientora — MVP-pool ops CLI
+
+Infra:
+  bootstrap                                        run server-level bootstrap (sudo)
+  infra:install                                    copy infra files to /srv/infra + gen .env
+  infra:up | infra:down | infra:restart | infra:ps
+  infra:logs [service]
+  infra:reload-caddy                               reload Caddy without downtime
+
+MVP lifecycle:
+  mvp:keygen <name>                                gen read-only deploy key; paste pubkey in GitHub
+  mvp:add <name> --domain X --repo GIT_URL [--branch main]
+          [--db-name X] [--db-user X] [--redis-db N] [--compose-file PATH]
+  mvp:list
+  mvp:remove <name> --yes                          stops, backs up DB, drops DB+role
+
+Deploy / runtime:
+  deploy <name>                                    pull + build + migrate + up + reload proxy
+  migrate <name>                                   run DB migrations only
+  logs <name> [service]
+  ps <name>
+  restart <name> [service]  |  stop <name>  |  start <name>
+  rollback <name> [git-ref]                        default HEAD~1
+
+Database:
+  db:psql <name>
+  db:backup <name>
+  db:restore <name> <path>
+
+Overview:
+  status
+EOF
+}
+
+main() {
+	local sub="${1:-}"; shift || true
+	case "$sub" in
+		bootstrap)        exec sudo bash "$FRAMEWORK_ROOT/bootstrap.sh" "$@" ;;
+		infra:install)    cmd_infra_install "$@" ;;
+		infra:up)         cmd_infra_up "$@" ;;
+		infra:down)       cmd_infra_down "$@" ;;
+		infra:restart)    cmd_infra_restart "$@" ;;
+		infra:logs)       cmd_infra_logs "$@" ;;
+		infra:ps)         cmd_infra_ps "$@" ;;
+		infra:reload-caddy) cmd_infra_reload_caddy "$@" ;;
+		mvp:keygen)       cmd_mvp_keygen "$@" ;;
+		mvp:add)          cmd_mvp_add "$@" ;;
+		mvp:list|list)    cmd_mvp_list "$@" ;;
+		mvp:remove)       cmd_mvp_remove "$@" ;;
+		deploy)           cmd_deploy "$@" ;;
+		migrate)          cmd_migrate "$@" ;;
+		logs)             cmd_logs "$@" ;;
+		ps)               cmd_ps "$@" ;;
+		restart)          cmd_restart "$@" ;;
+		stop)             cmd_stop "$@" ;;
+		start)            cmd_start "$@" ;;
+		rollback)         cmd_rollback "$@" ;;
+		db:psql)          cmd_db_psql "$@" ;;
+		db:backup)        cmd_db_backup "$@" ;;
+		db:restore)       cmd_db_restore "$@" ;;
+		status)           cmd_status "$@" ;;
+		""|-h|--help|help) usage ;;
+		*) die "unknown subcommand: $sub (try: clientora help)" ;;
+	esac
+}
+
+main "$@"
