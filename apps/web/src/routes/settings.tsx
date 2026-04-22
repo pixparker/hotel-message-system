@@ -123,6 +123,13 @@ export function SettingsPage() {
             </button>
           </div>
         </div>
+
+        <div className="card p-6 space-y-1">
+          <div className="text-sm font-semibold">About</div>
+          <div className="text-xs text-slate-500 select-all tabular-nums">
+            {__APP_VERSION__}
+          </div>
+        </div>
       </div>
     </Page>
   );
