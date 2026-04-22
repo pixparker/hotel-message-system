@@ -64,7 +64,7 @@ interface Campaign {
 interface Message {
   id: string;
   campaignId: string;
-  guestId: string | null;
+  contactId: string | null;
   phoneE164: string;
   language: string;
   renderedBody: string;
@@ -331,7 +331,7 @@ function seed(): State {
       messagesList.push({
         id: uuid(),
         campaignId: id,
-        guestId: guest.id,
+        contactId: guest.id,
         phoneE164: guest.phoneE164,
         language: lang,
         renderedBody: body,
@@ -492,14 +492,43 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
     return json({ testPhone: state.users[0]!.testPhone });
   }
 
-  // --- guests ---
-  if (path.startsWith("/api/guests")) {
+  // --- audiences (stub for demo — no real membership tracking) ---
+  if (path.startsWith("/api/audiences")) {
+    if (method === "GET") return json([]);
+    if (method === "POST") return json({ ok: true, id: uuid() }, 201);
+    return json({ ok: true });
+  }
+
+  // --- tags (stub) ---
+  if (path.startsWith("/api/tags")) {
+    if (method === "GET") return json([]);
+    return json({ ok: true });
+  }
+
+  // --- recipient preview (stub) ---
+  if (path.startsWith("/api/campaigns/recipient-preview")) {
+    return json({ total: 0, byLanguage: [], sample: [] });
+  }
+
+  // --- contacts (was /api/guests) ---
+  if (path.startsWith("/api/contacts") || path.startsWith("/api/guests")) {
     const url = new URL(path, "http://x");
     const statusFilter = url.searchParams.get("status") as
       | "checked_in"
       | "checked_out"
       | null;
-    const id = path.match(/^\/api\/guests\/([^\/]+)/)?.[1];
+    const id = path.match(/^\/api\/(?:contacts|guests)\/([^\/]+)/)?.[1];
+
+    // Shape adapter — inject empty audienceIds/tagIds + source/isActive so
+    // the Contact type shape matches the real API in demo mode.
+    const shape = (g: Guest) => ({
+      ...g,
+      source: "hotel" as const,
+      isActive: true,
+      updatedAt: g.createdAt,
+      audienceIds: [] as string[],
+      tagIds: [] as string[],
+    });
 
     if (method === "GET" && !id) {
       let rows = state.guests.filter((g) => g.orgId === ORG_ID);
@@ -507,7 +536,7 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
       rows.sort(
         (a, b) => new Date(b.checkedInAt).getTime() - new Date(a.checkedInAt).getTime(),
       );
-      return json(rows);
+      return json(rows.map(shape));
     }
     if (method === "POST" && !id) {
       const g: Guest = {
@@ -644,7 +673,7 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
       const msg: Message = {
         id: uuid(),
         campaignId: campaign.id,
-        guestId: null,
+        contactId: null,
         phoneE164: phone,
         language: picked.language,
         renderedBody: rendered,
@@ -729,7 +758,7 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
         state.messages.push({
           id: uuid(),
           campaignId: campaign.id,
-          guestId: g.id,
+          contactId: g.id,
           phoneE164: g.phoneE164,
           language: picked.language,
           renderedBody: renderBody(picked.body, { name: g.name }),
@@ -834,7 +863,7 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
     const ntMsgs = state.messages.filter((m) =>
       nonTest.some((c) => c.id === m.campaignId),
     );
-    const uniqueGuests = new Set(ntMsgs.map((m) => m.guestId).filter(Boolean)).size;
+    const uniqueRecipients = new Set(ntMsgs.map((m) => m.contactId).filter(Boolean)).size;
 
     const readMsgs = ntMsgs.filter((m) => m.readAt && m.sentAt);
     const durations = readMsgs.map(
@@ -913,7 +942,7 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
         delivered: totalsD,
         seen: totalsSeen,
         failed: totalsF,
-        uniqueGuests,
+        uniqueRecipients,
         deliveryRate: totalsS > 0 ? Math.round((totalsD / totalsS) * 1000) / 10 : 0,
         readRate: totalsS > 0 ? Math.round((totalsSeen / totalsS) * 1000) / 10 : 0,
       },

@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Page } from "../../components/Page.js";
 import { Stepper } from "../../components/Stepper.js";
 import { useWizard } from "../../state/wizard.js";
@@ -9,15 +9,14 @@ import { Step4Test } from "./step-4-test.js";
 import { Step5Confirm } from "./step-5-confirm.js";
 
 const STEPS = [
+  "Recipients",
   "Message",
   "Languages",
-  "Recipients",
   "Test",
   "Send",
 ];
 
 export function SendWizardPage() {
-  const loc = useLocation();
   const navigate = useNavigate();
   const step = useWizard((s) => s.step);
   const reset = useWizard((s) => s.reset);
@@ -45,9 +44,9 @@ export function SendWizardPage() {
       </div>
 
       <Routes>
-        <Route index element={<Step1Template />} />
+        <Route index element={<Step3Recipients />} />
+        <Route path="message" element={<Step1Template />} />
         <Route path="languages" element={<Step2Languages />} />
-        <Route path="recipients" element={<Step3Recipients />} />
         <Route path="test" element={<Step4Test />} />
         <Route path="confirm" element={<Step5Confirm />} />
         <Route path="*" element={<Navigate to="/send" replace />} />

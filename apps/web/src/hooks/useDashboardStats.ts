@@ -1,11 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
+import type { AudienceKind } from "./useAudiences.js";
 
 export interface DashboardStats {
-  activeGuests: {
+  activeContacts: {
     total: number;
     byLanguage: Array<{ language: string; count: number }>;
   };
+  checkedInGuests: {
+    total: number;
+    byLanguage: Array<{ language: string; count: number }>;
+  };
+  byAudience: Array<{
+    id: string;
+    name: string;
+    kind: AudienceKind;
+    isSystem: boolean;
+    memberCount: number;
+  }>;
   campaigns: {
     total: number;
     last7dCount: number;

@@ -1,13 +1,16 @@
 import type { Language } from "./languages.js";
 
-export interface GuestContext {
+export interface ContactContext {
   name: string;
   phoneE164: string;
   language: Language | string;
 }
 
+/** @deprecated use ContactContext */
+export type GuestContext = ContactContext;
+
 /**
- * Minimal mustache-style renderer: {{name}} → guest.name.
+ * Minimal mustache-style renderer: {{name}} → contact.name.
  * Missing keys render as an empty string.
  */
 export function renderBody(body: string, ctx: Record<string, string>): string {
@@ -22,12 +25,15 @@ export function pickBody(
   return bodies[language] ?? bodies[fallback] ?? Object.values(bodies)[0] ?? "";
 }
 
-export function renderForGuest(
+export function renderForContact(
   bodies: Record<string, string>,
-  guest: GuestContext,
+  contact: ContactContext,
   fallbackLanguage: string,
 ): { language: string; body: string } {
-  const language = bodies[guest.language] ? guest.language : fallbackLanguage;
+  const language = bodies[contact.language] ? contact.language : fallbackLanguage;
   const body = pickBody(bodies, language, fallbackLanguage);
-  return { language, body: renderBody(body, { name: guest.name }) };
+  return { language, body: renderBody(body, { name: contact.name }) };
 }
+
+/** @deprecated use renderForContact */
+export const renderForGuest = renderForContact;

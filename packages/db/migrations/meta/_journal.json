@@ -71,6 +71,20 @@
       "when": 1776760800000,
       "tag": "0009_onboarding_state",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776847200000,
+      "tag": "0010_contacts_audiences_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776933600000,
+      "tag": "0011_auth_find_user_email_verified",
+      "breakpoints": true
     }
   ]
 }

@@ -56,6 +56,12 @@
 .PhoneInputCountrySelectArrow {
   @apply opacity-60;
 }
+/* Wrapper already shows the focus ring; suppress the global :focus-visible
+   ring on the inner input + country select so it doesn't double up. */
+.PhoneInputInput:focus-visible,
+.PhoneInputCountrySelect:focus-visible {
+  @apply ring-0 ring-offset-0;
+}
 
 @layer components {
   .card {

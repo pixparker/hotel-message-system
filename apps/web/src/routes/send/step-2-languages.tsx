@@ -11,6 +11,11 @@ export function Step2Languages() {
   const { data: templates } = useTemplates();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    patch({ step: 3 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const templateBodies = useMemo<Partial<Record<Language, string>> | null>(() => {
     if (mode !== "template" || !templateId || !templates) return null;
     const t = templates.find((x) => x.id === templateId);
@@ -68,8 +73,8 @@ export function Step2Languages() {
         <button
           className="btn-secondary"
           onClick={() => {
-            patch({ step: 1 });
-            navigate("/send");
+            patch({ step: 2 });
+            navigate("/send/message");
           }}
         >
           <ArrowLeft className="h-4 w-4" /> Back
@@ -78,8 +83,8 @@ export function Step2Languages() {
           className="btn-primary"
           disabled={filledCount === 0}
           onClick={() => {
-            patch({ step: 3 });
-            navigate("/send/recipients");
+            patch({ step: 4 });
+            navigate("/send/test");
           }}
         >
           Continue

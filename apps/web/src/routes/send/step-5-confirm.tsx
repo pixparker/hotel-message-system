@@ -4,10 +4,12 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { ArrowLeft, Send, Loader2, Bookmark } from "lucide-react";
 import { LANGUAGE_LABELS, RTL_LANGUAGES, type Language } from "@hms/shared";
 import { useWizard } from "../../state/wizard.js";
-import { useGuests } from "../../hooks/useGuests.js";
+import { useAudiences } from "../../hooks/useAudiences.js";
+import { useRecipientPreview } from "../../hooks/useRecipientPreview.js";
 import { api } from "../../lib/api.js";
 import { useToast } from "../../components/toast.js";
 import { LANGUAGE_FLAGS } from "../../components/LanguagePicker.js";
+import { AudienceChip } from "../../components/AudienceChip.js";
 
 function suggestTitle(
   bodies: Partial<Record<Language, string>>,
@@ -25,17 +27,27 @@ export function Step5Confirm() {
     templateId,
     customBodies,
     title,
-    recipientStatus,
+    selectedAudienceIds,
     saveAsTemplate,
     templateName,
     reset,
     patch,
   } = useWizard();
-  const { data: recipients = [] } = useGuests(recipientStatus);
+  const { data: audiences = [] } = useAudiences();
+  const preview = useRecipientPreview(selectedAudienceIds);
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
   const [sending, setSending] = useState(false);
   const { push } = useToast();
+
+  const recipientCount = preview.data?.total ?? 0;
+  const perLanguageCount = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const row of preview.data?.byLanguage ?? []) {
+      m[row.language] = row.count;
+    }
+    return m;
+  }, [preview.data]);
 
   const filledLanguages = useMemo(
     () =>
@@ -45,10 +57,13 @@ export function Step5Confirm() {
     [customBodies],
   );
 
-  const perLanguageCount = recipients.reduce<Record<string, number>>((acc, g) => {
-    acc[g.language] = (acc[g.language] ?? 0) + 1;
-    return acc;
-  }, {});
+  const selectedAudiences = useMemo(
+    () =>
+      selectedAudienceIds
+        .map((id) => audiences.find((a) => a.id === id))
+        .filter((a): a is NonNullable<typeof a> => Boolean(a)),
+    [selectedAudienceIds, audiences],
+  );
 
   const suggested = useMemo(
     () => suggestTitle(customBodies, filledLanguages),
@@ -82,7 +97,7 @@ export function Step5Confirm() {
           templateId: finalTemplateId,
           customBodies:
             mode === "custom" && !saveAsTemplate ? customBodies : undefined,
-          recipientFilter: { status: recipientStatus },
+          audienceIds: selectedAudienceIds,
         }),
       });
       reset();
@@ -159,18 +174,40 @@ export function Step5Confirm() {
 
       <div className="card p-5 grid gap-4 md:grid-cols-3">
         <Summary label="Campaign" value={effectiveTitle || "Untitled campaign"} />
-        <Summary label="Recipients" value={`${recipients.length} guests`} />
+        <Summary
+          label="Recipients"
+          value={`${recipientCount} recipient${recipientCount === 1 ? "" : "s"}`}
+        />
         <Summary
           label="Languages"
           value={filledLanguages.map((l) => l.toUpperCase()).join(" · ") || "—"}
         />
       </div>
 
+      {selectedAudiences.length > 0 && (
+        <div className="card p-5">
+          <div className="mb-3 text-sm font-semibold text-slate-900">
+            Sending to
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {selectedAudiences.map((a) => (
+              <AudienceChip
+                key={a.id}
+                name={a.name}
+                kind={a.kind}
+                isSystem={a.isSystem}
+                size="md"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="text-sm font-semibold">Message preview</div>
           <div className="text-xs text-slate-400">
-            Exactly what guests will receive on WhatsApp.
+            Exactly what recipients will receive on WhatsApp.
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -185,7 +222,7 @@ export function Step5Confirm() {
                     {LANGUAGE_LABELS[l]}
                   </span>
                   <span className="text-slate-500 tabular-nums">
-                    {count} guest{count === 1 ? "" : "s"} · {customBodies[l]!.length} chars
+                    {count} recipient{count === 1 ? "" : "s"} · {customBodies[l]!.length} chars
                   </span>
                 </div>
                 <div
@@ -200,7 +237,7 @@ export function Step5Confirm() {
         </div>
         {missingCoverage && filledLanguages[0] && (
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Some guests speak a language you haven't filled in — they'll receive the{" "}
+            Some recipients speak a language you haven't filled in — they'll receive the{" "}
             {filledLanguages[0].toUpperCase()} version as fallback.
           </div>
         )}
@@ -216,9 +253,13 @@ export function Step5Confirm() {
         >
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
-        <button className="btn-primary" onClick={() => setConfirm(true)}>
+        <button
+          className="btn-primary"
+          disabled={recipientCount === 0}
+          onClick={() => setConfirm(true)}
+        >
           <Send className="h-4 w-4" />
-          Send to guests
+          Send to {recipientCount} recipient{recipientCount === 1 ? "" : "s"}
         </button>
       </div>
 
@@ -227,7 +268,7 @@ export function Step5Confirm() {
           <Dialog.Overlay className="fixed inset-0 z-40 bg-slate-900/30" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 card p-6">
             <Dialog.Title className="text-lg font-semibold">
-              Send to {recipients.length} guests?
+              Send to {recipientCount} recipient{recipientCount === 1 ? "" : "s"}?
             </Dialog.Title>
             <Dialog.Description className="mt-1 text-sm text-slate-500">
               This will deliver the message on WhatsApp. You can close the next

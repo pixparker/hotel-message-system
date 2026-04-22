@@ -1,8 +1,11 @@
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { Users } from "lucide-react";
 import { api } from "../lib/api.js";
 import { Page } from "../components/Page.js";
+import { AudienceChip } from "../components/AudienceChip.js";
 import { formatPhoneDisplay } from "@hms/shared";
+import type { AudienceKind } from "../hooks/useAudiences.js";
 
 interface Message {
   id: string;
@@ -26,6 +29,12 @@ interface CampaignDetail {
   totalsSeen: number;
   totalsFailed: number;
   messages: Message[];
+  audiences?: Array<{
+    id: string;
+    name: string;
+    kind: AudienceKind;
+    isSystem: boolean;
+  }>;
 }
 
 const statusTone: Record<string, string> = {
@@ -56,6 +65,30 @@ export function CampaignDetailPage() {
       title={data.title}
       description={new Date(data.createdAt).toLocaleString()}
     >
+      {data.audiences && data.audiences.length > 0 && (
+        <div className="card p-5 mb-6">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <Users className="h-3.5 w-3.5" />
+            Sent to
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {data.audiences.map((a) => (
+              <AudienceChip
+                key={a.id}
+                name={a.name}
+                kind={a.kind}
+                isSystem={a.isSystem}
+                size="md"
+              />
+            ))}
+            <span className="ml-2 text-sm text-slate-500 tabular-nums">
+              {data.totalsQueued} recipient
+              {data.totalsQueued === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <Stat label="Recipients" value={data.totalsQueued} />
         <Stat label="Sent" value={data.totalsSent} />

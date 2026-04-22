@@ -11,20 +11,23 @@ import {
   Languages,
   TrendingUp,
   Sparkles,
+  ListFilter,
 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Page } from "../components/Page.js";
 import { PhoneInput } from "../components/PhoneInput.js";
 import { LanguagePicker } from "../components/LanguagePicker.js";
 import {
-  useGuests,
-  useCheckInGuest,
-  type Guest,
-} from "../hooks/useGuests.js";
+  useContacts,
+  useCreateContact,
+  type Contact,
+} from "../hooks/useContacts.js";
+import { useAudiences } from "../hooks/useAudiences.js";
 import { useDashboardStats } from "../hooks/useDashboardStats.js";
 import { useToast } from "../components/toast.js";
 import { LANGUAGE_LABELS, formatPhoneDisplay } from "@hms/shared";
 import { CheckoutDialog } from "../components/CheckoutDialog.js";
+import { AudienceChip } from "../components/AudienceChip.js";
 
 function greetingFor(date = new Date()): string {
   const h = date.getHours();
@@ -43,20 +46,24 @@ export function DashboardPage() {
     ? Math.round((stats.campaigns.avgReadMs / 60000) * 10) / 10
     : null;
 
+  const checkedIn = stats?.checkedInGuests?.total ?? 0;
+
   return (
     <Page
-      eyebrow={`${greetingFor()} · Reform Hotel front desk`}
+      eyebrow={`${greetingFor()} · Reform Hotel`}
       title="Welcome back."
-      description="Your guests, your messages, your performance — all at a glance."
+      description="Your contacts, your audiences, your campaigns — all at a glance."
       actions={
         <>
-          <button
-            className="btn-secondary"
-            onClick={() => setCheckInOpen(true)}
-          >
-            <UserPlus className="h-4 w-4" />
-            Check in guest
-          </button>
+          {checkedIn > 0 && (
+            <button
+              className="btn-secondary"
+              onClick={() => setCheckInOpen(true)}
+            >
+              <UserPlus className="h-4 w-4" />
+              Check in guest
+            </button>
+          )}
           <Link to="/send" className="btn-primary">
             <Send className="h-4 w-4" />
             Send message
@@ -68,9 +75,9 @@ export function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Checked-in guests"
-          value={stats?.activeGuests.total ?? 0}
-          hint={`${stats?.activeGuests.byLanguage.length ?? 0} languages in-house`}
+          label="Active contacts"
+          value={stats?.activeContacts?.total ?? 0}
+          hint={`${stats?.activeContacts?.byLanguage.length ?? 0} languages`}
           icon={MessageSquare}
           tone="brand"
         />
@@ -101,13 +108,15 @@ export function DashboardPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <LanguageMixCard
-          entries={stats?.activeGuests.byLanguage ?? []}
-          total={stats?.activeGuests.total ?? 0}
+          entries={stats?.activeContacts?.byLanguage ?? []}
+          total={stats?.activeContacts?.total ?? 0}
         />
-        <RecentCampaignsCard campaigns={stats?.recentCampaigns ?? []} />
+        <TopAudiencesCard audiences={stats?.byAudience ?? []} />
       </div>
 
-      <ActiveGuestsCard />
+      <RecentCampaignsCard campaigns={stats?.recentCampaigns ?? []} />
+
+      {checkedIn > 0 && <CheckedInContactsCard />}
     </Page>
   );
 }
@@ -188,7 +197,7 @@ function LanguageMixCard({
           Language mix
         </div>
         <div className="mt-4 text-sm text-slate-400">
-          Check in a guest to see the language breakdown.
+          Add a contact to see the language breakdown.
         </div>
       </div>
     );
@@ -228,6 +237,72 @@ function LanguageMixCard({
   );
 }
 
+function TopAudiencesCard({
+  audiences,
+}: {
+  audiences: Array<{
+    id: string;
+    name: string;
+    kind: "hotel_guests" | "vip" | "friends" | "custom";
+    isSystem: boolean;
+    memberCount: number;
+  }>;
+}) {
+  const top = audiences.filter((a) => a.memberCount > 0).slice(0, 3);
+  return (
+    <div className="card p-5 lg:col-span-2">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <ListFilter className="h-4 w-4 text-brand-600" />
+          Top audiences
+        </div>
+        <Link
+          to="/audiences"
+          className="text-xs font-semibold text-brand-700 hover:text-brand-900"
+        >
+          Manage all →
+        </Link>
+      </div>
+      {top.length === 0 ? (
+        <div className="rounded-xl bg-surface-50 p-6 text-center">
+          <Sparkles className="mx-auto h-5 w-5 text-brand-500" />
+          <div className="mt-2 text-sm text-slate-500">
+            Add contacts to audiences to target them in campaigns.
+          </div>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {top.map((a) => (
+            <li
+              key={a.id}
+              className="flex items-center justify-between rounded-lg border border-slate-100 bg-surface-50 px-4 py-3 hover:bg-surface-100 transition"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <AudienceChip
+                  name={a.name}
+                  kind={a.kind}
+                  isSystem={a.isSystem}
+                  size="md"
+                />
+                <span className="text-sm text-slate-500 tabular-nums">
+                  {a.memberCount} member{a.memberCount === 1 ? "" : "s"}
+                </span>
+              </div>
+              <Link
+                to={`/send?audience=${a.id}`}
+                className="btn-ghost text-brand-700 hover:bg-brand-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                Send
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function RecentCampaignsCard({
   campaigns,
 }: {
@@ -243,7 +318,7 @@ function RecentCampaignsCard({
   }>;
 }) {
   return (
-    <div className="card p-5 lg:col-span-2">
+    <div className="mt-6 card p-5">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <TrendingUp className="h-4 w-4 text-brand-600" />
@@ -317,11 +392,18 @@ function RecentCampaignsCard({
   );
 }
 
-function ActiveGuestsCard() {
-  const { data: guests = [] } = useGuests("checked_in");
-  const [checkoutGuest, setCheckoutGuest] = useState<Guest | null>(null);
+function CheckedInContactsCard() {
+  // Only contacts that belong to Hotel Guests audience AND are checked_in.
+  const { data: audiences = [] } = useAudiences();
+  const hotelAudienceId = audiences.find((a) => a.kind === "hotel_guests")?.id;
+  const { data: contacts = [] } = useContacts(
+    hotelAudienceId
+      ? { audienceId: hotelAudienceId, status: "checked_in" }
+      : undefined,
+  );
+  const [checkoutContact, setCheckoutContact] = useState<Contact | null>(null);
 
-  if (guests.length === 0) return null;
+  if (!hotelAudienceId || contacts.length === 0) return null;
 
   return (
     <>
@@ -331,18 +413,18 @@ function ActiveGuestsCard() {
             <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-200" />
             Currently in-house
             <span className="ml-1 rounded-full bg-surface-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-              {guests.length}
+              {contacts.length}
             </span>
           </div>
           <Link
-            to="/guests"
+            to={`/audiences/${hotelAudienceId}`}
             className="text-xs font-semibold text-brand-700 hover:text-brand-900"
           >
             Manage all →
           </Link>
         </div>
         <ul className="divide-y divide-slate-100">
-          {guests.slice(0, 6).map((g: Guest) => (
+          {contacts.slice(0, 6).map((g: Contact) => (
             <li
               key={g.id}
               className="flex items-center justify-between px-5 py-3 hover:bg-surface-50 transition"
@@ -370,7 +452,7 @@ function ActiveGuestsCard() {
               </div>
               <button
                 className="btn-ghost text-rose-600 hover:bg-rose-50"
-                onClick={() => setCheckoutGuest(g)}
+                onClick={() => setCheckoutContact(g)}
               >
                 <LogOut className="h-4 w-4" />
                 Check out
@@ -380,9 +462,9 @@ function ActiveGuestsCard() {
         </ul>
       </div>
       <CheckoutDialog
-        guest={checkoutGuest}
-        open={!!checkoutGuest}
-        onOpenChange={(o) => !o && setCheckoutGuest(null)}
+        guest={checkoutContact}
+        open={!!checkoutContact}
+        onOpenChange={(o) => !o && setCheckoutContact(null)}
       />
     </>
   );
@@ -399,8 +481,10 @@ function CheckInDialog({
   const [phone, setPhone] = useState("");
   const [language, setLanguage] = useState("en");
   const [roomNumber, setRoomNumber] = useState("");
-  const mutation = useCheckInGuest();
+  const mutation = useCreateContact();
   const { push } = useToast();
+  const { data: audiences = [] } = useAudiences();
+  const hotelAudienceId = audiences.find((a) => a.kind === "hotel_guests")?.id;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -410,6 +494,8 @@ function CheckInDialog({
         phone,
         language,
         roomNumber: roomNumber.trim() || undefined,
+        source: "hotel",
+        audienceIds: hotelAudienceId ? [hotelAudienceId] : undefined,
       });
       push({ variant: "success", title: `${name} checked in` });
       setName("");
@@ -492,3 +578,4 @@ function CheckInDialog({
     </Dialog.Root>
   );
 }
+

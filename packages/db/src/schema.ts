@@ -9,10 +9,17 @@ import {
   boolean,
   index,
   primaryKey,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-export const guestStatus = pgEnum("guest_status", ["checked_in", "checked_out"]);
+// Hotel-specific status enum. The pg type name stays "guest_status" to avoid
+// a risky ALTER TYPE RENAME during partial deploys; only the TS symbol is the
+// generic `contactStatus`.
+export const contactStatus = pgEnum("guest_status", [
+  "checked_in",
+  "checked_out",
+]);
 export const userRole = pgEnum("user_role", ["admin", "staff"]);
 export const campaignStatus = pgEnum("campaign_status", [
   "draft",
@@ -33,6 +40,12 @@ export const templateApprovalStatus = pgEnum("template_approval_status", [
   "pending",
   "approved",
   "rejected",
+]);
+export const contactSource = pgEnum("contact_source", [
+  "manual",
+  "hotel",
+  "csv",
+  "future",
 ]);
 
 export const organizations = pgTable("organizations", {
@@ -63,8 +76,8 @@ export const users = pgTable(
   }),
 );
 
-export const guests = pgTable(
-  "guests",
+export const contacts = pgTable(
+  "contacts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: uuid("org_id")
@@ -73,15 +86,98 @@ export const guests = pgTable(
     name: text("name").notNull(),
     phoneE164: text("phone_e164").notNull(),
     language: text("language").notNull().default("en"),
+    source: contactSource("source").notNull().default("manual"),
+    isActive: boolean("is_active").notNull().default(true),
+    // Hotel-specific columns — kept for backwards compatibility; nullable
+    // because generic contacts (friends, VIPs) don't check in/out.
     roomNumber: text("room_number"),
-    status: guestStatus("status").notNull().default("checked_in"),
-    checkedInAt: timestamp("checked_in_at", { withTimezone: true }).notNull().defaultNow(),
+    status: contactStatus("status"),
+    checkedInAt: timestamp("checked_in_at", { withTimezone: true }),
     checkedOutAt: timestamp("checked_out_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgStatusIdx: index("contacts_org_status_idx").on(t.orgId, t.status),
+    orgPhoneIdx: index("contacts_org_phone_idx").on(t.orgId, t.phoneE164),
+    orgSourceIdx: index("contacts_org_source_idx").on(t.orgId, t.source),
+    orgActiveIdx: index("contacts_org_active_idx").on(t.orgId, t.isActive),
+  }),
+);
+
+export const audiences = pgTable(
+  "audiences",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind").notNull().default("custom"),
+    description: text("description"),
+    isSystem: boolean("is_system").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    orgStatusIdx: index("guests_org_status_idx").on(t.orgId, t.status),
-    orgPhoneIdx: index("guests_org_phone_idx").on(t.orgId, t.phoneE164),
+    orgIdx: index("audiences_org_idx").on(t.orgId),
+    orgNameUnq: uniqueIndex("audiences_org_name_unq").on(t.orgId, t.name),
+  }),
+);
+
+export const contactAudiences = pgTable(
+  "contact_audiences",
+  {
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    audienceId: uuid("audience_id")
+      .notNull()
+      .references(() => audiences.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.contactId, t.audienceId] }),
+    audienceIdx: index("contact_audiences_audience_idx").on(t.audienceId),
+    orgIdx: index("contact_audiences_org_idx").on(t.orgId),
+  }),
+);
+
+export const tags = pgTable(
+  "tags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    color: text("color"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("tags_org_idx").on(t.orgId),
+    orgLabelUnq: uniqueIndex("tags_org_label_unq").on(t.orgId, t.label),
+  }),
+);
+
+export const contactTags = pgTable(
+  "contact_tags",
+  {
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.contactId, t.tagId] }),
+    tagIdx: index("contact_tags_tag_idx").on(t.tagId),
   }),
 );
 
@@ -128,7 +224,11 @@ export const campaigns = pgTable(
     title: text("title").notNull(),
     templateId: uuid("template_id").references(() => templates.id),
     customBodies: jsonb("custom_bodies").$type<Record<string, string> | null>(),
-    recipientFilter: jsonb("recipient_filter").$type<{ status?: "checked_in" | "checked_out" }>().notNull(),
+    // Kept nullable for future dynamic-segment support. Audience-based
+    // targeting is now carried by the campaign_audiences junction.
+    recipientFilter: jsonb("recipient_filter").$type<{
+      status?: "checked_in" | "checked_out";
+    } | null>(),
     isTest: boolean("is_test").notNull().default(false),
     status: campaignStatus("status").notNull().default("draft"),
     totalsQueued: integer("totals_queued").notNull().default(0),
@@ -145,6 +245,25 @@ export const campaigns = pgTable(
   }),
 );
 
+export const campaignAudiences = pgTable(
+  "campaign_audiences",
+  {
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    audienceId: uuid("audience_id").references(() => audiences.id, {
+      onDelete: "set null",
+    }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.campaignId, t.audienceId] }),
+    audienceIdx: index("campaign_audiences_audience_idx").on(t.audienceId),
+  }),
+);
+
 export const messages = pgTable(
   "messages",
   {
@@ -155,7 +274,7 @@ export const messages = pgTable(
     campaignId: uuid("campaign_id")
       .notNull()
       .references(() => campaigns.id, { onDelete: "cascade" }),
-    guestId: uuid("guest_id").references(() => guests.id),
+    contactId: uuid("contact_id").references(() => contacts.id),
     phoneE164: text("phone_e164").notNull(),
     language: text("language").notNull(),
     renderedBody: text("rendered_body").notNull(),
@@ -262,12 +381,58 @@ export const auditEvents = pgTable(
   }),
 );
 
+// Relations -----------------------------------------------------------------
+
 export const organizationsRelations = relations(organizations, ({ many, one }) => ({
   users: many(users),
-  guests: many(guests),
+  contacts: many(contacts),
+  audiences: many(audiences),
+  tags: many(tags),
   templates: many(templates),
   campaigns: many(campaigns),
   settings: one(settings, { fields: [organizations.id], references: [settings.orgId] }),
+}));
+
+export const contactsRelations = relations(contacts, ({ many, one }) => ({
+  org: one(organizations, {
+    fields: [contacts.orgId],
+    references: [organizations.id],
+  }),
+  audiences: many(contactAudiences),
+  tags: many(contactTags),
+}));
+
+export const audiencesRelations = relations(audiences, ({ many, one }) => ({
+  org: one(organizations, {
+    fields: [audiences.orgId],
+    references: [organizations.id],
+  }),
+  members: many(contactAudiences),
+  campaigns: many(campaignAudiences),
+}));
+
+export const contactAudiencesRelations = relations(contactAudiences, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [contactAudiences.contactId],
+    references: [contacts.id],
+  }),
+  audience: one(audiences, {
+    fields: [contactAudiences.audienceId],
+    references: [audiences.id],
+  }),
+}));
+
+export const tagsRelations = relations(tags, ({ many, one }) => ({
+  org: one(organizations, { fields: [tags.orgId], references: [organizations.id] }),
+  contacts: many(contactTags),
+}));
+
+export const contactTagsRelations = relations(contactTags, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [contactTags.contactId],
+    references: [contacts.id],
+  }),
+  tag: one(tags, { fields: [contactTags.tagId], references: [tags.id] }),
 }));
 
 export const templatesRelations = relations(templates, ({ many, one }) => ({
@@ -292,6 +457,18 @@ export const campaignsRelations = relations(campaigns, ({ many, one }) => ({
     fields: [campaigns.createdBy],
     references: [users.id],
   }),
+  audiences: many(campaignAudiences),
+}));
+
+export const campaignAudiencesRelations = relations(campaignAudiences, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignAudiences.campaignId],
+    references: [campaigns.id],
+  }),
+  audience: one(audiences, {
+    fields: [campaignAudiences.audienceId],
+    references: [audiences.id],
+  }),
 }));
 
 export const messagesRelations = relations(messages, ({ one }) => ({
@@ -299,15 +476,26 @@ export const messagesRelations = relations(messages, ({ one }) => ({
     fields: [messages.campaignId],
     references: [campaigns.id],
   }),
-  guest: one(guests, { fields: [messages.guestId], references: [guests.id] }),
+  contact: one(contacts, { fields: [messages.contactId], references: [contacts.id] }),
 }));
+
+// Backwards-compat aliases. M3 will drop these once all call sites move to
+// the new names.
+export const guests = contacts;
+export const guestStatus = contactStatus;
 
 export type Organization = typeof organizations.$inferSelect;
 export type User = typeof users.$inferSelect;
-export type Guest = typeof guests.$inferSelect;
+export type Contact = typeof contacts.$inferSelect;
+export type Guest = Contact;
+export type Audience = typeof audiences.$inferSelect;
+export type ContactAudience = typeof contactAudiences.$inferSelect;
+export type Tag = typeof tags.$inferSelect;
+export type ContactTag = typeof contactTags.$inferSelect;
 export type Template = typeof templates.$inferSelect;
 export type TemplateBody = typeof templateBodies.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
+export type CampaignAudience = typeof campaignAudiences.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Settings = typeof settings.$inferSelect;
 export type RefreshToken = typeof refreshTokens.$inferSelect;

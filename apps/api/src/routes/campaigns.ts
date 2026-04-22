@@ -1,9 +1,12 @@
 import { Hono } from "hono";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import {
   campaigns,
+  campaignAudiences,
   messages,
-  guests,
+  contacts,
+  contactAudiences,
+  audiences,
   templates,
   organizations,
   settings,
@@ -11,7 +14,7 @@ import {
 import {
   campaignCreateSchema,
   testMessageSchema,
-  renderForGuest,
+  renderForContact,
   normalizePhone,
 } from "@hms/shared";
 import { requireAuth, requireVerified, currentOrgId } from "../auth.js";
@@ -48,6 +51,86 @@ async function resolveBodies(
   return Object.fromEntries(tpl.bodies.map((b) => [b.language, b.body]));
 }
 
+/**
+ * Resolve recipient contacts from a set of audience ids. DISTINCT so a
+ * contact in multiple selected audiences is counted once. Filters out
+ * deactivated contacts — an inactive contact in Hotel Guests shouldn't
+ * still receive marketing.
+ */
+async function resolveRecipientsByAudiences(
+  db: TenantDb,
+  orgId: string,
+  audienceIds: string[],
+) {
+  if (audienceIds.length === 0) return [];
+  return db
+    .selectDistinct({
+      id: contacts.id,
+      orgId: contacts.orgId,
+      name: contacts.name,
+      phoneE164: contacts.phoneE164,
+      language: contacts.language,
+    })
+    .from(contacts)
+    .innerJoin(contactAudiences, eq(contactAudiences.contactId, contacts.id))
+    .where(
+      and(
+        eq(contacts.orgId, orgId),
+        eq(contacts.isActive, true),
+        inArray(contactAudiences.audienceId, audienceIds),
+      ),
+    );
+}
+
+/**
+ * Legacy hotel-status resolution — kept so old callers that don't pass
+ * audienceIds still work while M6 swaps the frontend over.
+ */
+async function resolveRecipientsByStatus(
+  db: TenantDb,
+  orgId: string,
+  status: "checked_in" | "checked_out",
+) {
+  return db
+    .select({
+      id: contacts.id,
+      orgId: contacts.orgId,
+      name: contacts.name,
+      phoneE164: contacts.phoneE164,
+      language: contacts.language,
+    })
+    .from(contacts)
+    .where(
+      and(
+        eq(contacts.orgId, orgId),
+        eq(contacts.isActive, true),
+        eq(contacts.status, status),
+      ),
+    );
+}
+
+async function loadCampaignAudiences(
+  db: TenantDb,
+  orgId: string,
+  campaignId: string,
+) {
+  return db
+    .select({
+      id: audiences.id,
+      name: audiences.name,
+      kind: audiences.kind,
+      isSystem: audiences.isSystem,
+    })
+    .from(campaignAudiences)
+    .innerJoin(audiences, eq(audiences.id, campaignAudiences.audienceId))
+    .where(
+      and(
+        eq(campaignAudiences.campaignId, campaignId),
+        eq(campaignAudiences.orgId, orgId),
+      ),
+    );
+}
+
 export const campaignRoutes = new Hono()
   .use(requireAuth)
   .use(withTenant)
@@ -64,6 +147,38 @@ export const campaignRoutes = new Hono()
       .limit(100);
     return c.json(rows);
   })
+  /**
+   * Preview the deduped recipient count and language breakdown for a
+   * given set of audiences. Used by the send wizard step 3.
+   */
+  .get("/recipient-preview", async (c) => {
+    const db = c.var.db;
+    const orgId = currentOrgId(c);
+    const raw = c.req.query("audienceIds") ?? "";
+    const audienceIds = raw.split(",").map((s) => s.trim()).filter(Boolean);
+
+    if (audienceIds.length === 0) {
+      return c.json({ total: 0, byLanguage: [], sample: [] });
+    }
+
+    const rows = await resolveRecipientsByAudiences(db, orgId, audienceIds);
+
+    const byLanguageMap = new Map<string, number>();
+    for (const r of rows) {
+      byLanguageMap.set(r.language, (byLanguageMap.get(r.language) ?? 0) + 1);
+    }
+    const byLanguage = Array.from(byLanguageMap.entries())
+      .map(([language, count]) => ({ language, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const sample = rows.slice(0, 5).map((r) => ({
+      id: r.id,
+      name: r.name,
+      phoneE164: r.phoneE164,
+    }));
+
+    return c.json({ total: rows.length, byLanguage, sample });
+  })
   .get("/:id", async (c) => {
     const db = c.var.db;
     const id = c.req.param("id");
@@ -72,11 +187,11 @@ export const campaignRoutes = new Hono()
       where: and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)),
     });
     if (!campaign) return c.json({ error: "not_found" }, 404);
-    const rows = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.campaignId, id));
-    return c.json({ ...campaign, messages: rows });
+    const [msgRows, audienceRows] = await Promise.all([
+      db.select().from(messages).where(eq(messages.campaignId, id)),
+      loadCampaignAudiences(db, orgId, id),
+    ]);
+    return c.json({ ...campaign, messages: msgRows, audiences: audienceRows });
   })
   .post("/", async (c) => {
     const db = c.var.db;
@@ -110,10 +225,12 @@ export const campaignRoutes = new Hono()
       }
     }
 
-    const recipients = await db
-      .select()
-      .from(guests)
-      .where(and(eq(guests.orgId, orgId), eq(guests.status, body.recipientFilter.status)));
+    // Prefer audience-based targeting; fall back to legacy status filter so
+    // pre-M6 clients keep working.
+    const useAudiences = body.audienceIds && body.audienceIds.length > 0;
+    const recipients = useAudiences
+      ? await resolveRecipientsByAudiences(db, orgId, body.audienceIds!)
+      : await resolveRecipientsByStatus(db, orgId, body.recipientFilter.status);
 
     if (recipients.length === 0) {
       return c.json({ error: "no_recipients" }, 400);
@@ -127,27 +244,40 @@ export const campaignRoutes = new Hono()
         title: body.title,
         templateId: body.templateId,
         customBodies: body.customBodies ?? null,
-        recipientFilter: body.recipientFilter,
+        // Only persist the legacy filter when it's actually used.
+        recipientFilter: useAudiences ? null : body.recipientFilter,
         status: "sending",
         totalsQueued: recipients.length,
         startedAt: new Date(),
       })
       .returning();
 
+    // Snapshot which audiences this campaign targeted so reports stay
+    // meaningful even if an audience is renamed or deleted later.
+    if (useAudiences && campaign) {
+      await db.insert(campaignAudiences).values(
+        body.audienceIds!.map((audienceId) => ({
+          campaignId: campaign.id,
+          audienceId,
+          orgId,
+        })),
+      );
+    }
+
     const messageRows = await db
       .insert(messages)
       .values(
         recipients.map((g) => {
-          const rendered = renderForGuest(bodies, g, fallback);
+          const rendered = renderForContact(bodies, g, fallback);
           return {
             orgId,
             campaignId: campaign!.id,
-            guestId: g.id,
+            contactId: g.id,
             phoneE164: g.phoneE164,
             language: rendered.language,
             renderedBody: rendered.body,
             status: "queued" as const,
-            // Unique per (org, campaign, guest) so retries can't double-send.
+            // Unique per (org, campaign, contact) so retries can't double-send.
             idempotencyKey: `${campaign!.id}:${g.id}`,
           };
         }),
@@ -168,7 +298,11 @@ export const campaignRoutes = new Hono()
       userId: auth.sub,
       action: "campaign.create",
       target: campaign!.id,
-      metadata: { title: body.title, recipientCount: recipients.length },
+      metadata: {
+        title: body.title,
+        recipientCount: recipients.length,
+        audienceIds: useAudiences ? body.audienceIds : null,
+      },
       ip: ctx.ip,
       userAgent: ctx.userAgent,
     });
@@ -183,7 +317,7 @@ export const campaignRoutes = new Hono()
     const bodies = await resolveBodies(db, orgId, body);
     const phoneE164 = normalizePhone(body.phone);
 
-    const rendered = renderForGuest(
+    const rendered = renderForContact(
       bodies,
       { name: "Test", phoneE164, language: body.language },
       "en",
@@ -197,7 +331,9 @@ export const campaignRoutes = new Hono()
         title: `Test: ${rendered.body.slice(0, 40)}`,
         templateId: body.templateId,
         customBodies: body.customBodies ?? null,
-        recipientFilter: { status: "checked_in" },
+        // Test sends don't target anything — nullable recipient_filter now
+        // makes this explicit rather than lying about a default.
+        recipientFilter: null,
         isTest: true,
         status: "sending",
         totalsQueued: 1,
@@ -214,7 +350,7 @@ export const campaignRoutes = new Hono()
         language: rendered.language,
         renderedBody: rendered.body,
         status: "queued",
-        // Test sends have no guest; use the campaign id (test campaigns are single-message).
+        // Test sends have no contact; use the campaign id (test campaigns are single-message).
         idempotencyKey: `test:${campaign!.id}`,
       })
       .returning();

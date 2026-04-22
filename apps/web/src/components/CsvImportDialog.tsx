@@ -42,7 +42,7 @@ export function CsvImportDialog({
   async function runPreview() {
     setLoading(true);
     try {
-      const res = await api<PreviewResult>("/api/guests/import/preview", {
+      const res = await api<PreviewResult>("/api/contacts/import/preview", {
         method: "POST",
         body: JSON.stringify({ csv }),
       });
@@ -62,7 +62,7 @@ export function CsvImportDialog({
     setLoading(true);
     try {
       const res = await api<{ inserted: number; skippedExisting: number; skippedInvalid: number }>(
-        "/api/guests/import",
+        "/api/contacts/import",
         { method: "POST", body: JSON.stringify({ csv }) },
       );
       push({
@@ -91,7 +91,7 @@ export function CsvImportDialog({
         <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-xl bg-white rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
           <div className="flex items-start justify-between">
             <div>
-              <Dialog.Title className="text-lg font-semibold">Import guests from CSV</Dialog.Title>
+              <Dialog.Title className="text-lg font-semibold">Import contacts from CSV</Dialog.Title>
               <Dialog.Description className="text-sm text-slate-500 mt-1">
                 Columns: <code>name,phone,language,room_number</code>. Max 5000 rows.
               </Dialog.Description>
@@ -191,7 +191,7 @@ export function CsvImportDialog({
                   onClick={runImport}
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  Import {preview.validCount - preview.duplicatesExisting.length} guests
+                  Import {preview.validCount - preview.duplicatesExisting.length} contacts
                 </button>
               </div>
             </>
