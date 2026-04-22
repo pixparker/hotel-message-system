@@ -1,4 +1,4 @@
-import IORedis from "ioredis";
+import { Redis as IORedis } from "ioredis";
 import { Queue } from "bullmq";
 import { env } from "./env.js";
 
