@@ -22,12 +22,19 @@ import {
   useDeleteAudience,
   useUpdateAudience,
 } from "../hooks/useAudiences.js";
-import { useContacts, type Contact } from "../hooks/useContacts.js";
+import {
+  useContacts,
+  useCreateContact,
+  type Contact,
+} from "../hooks/useContacts.js";
 import { AudienceChip } from "../components/AudienceChip.js";
 import { SourceBadge } from "../components/SourceBadge.js";
 import { EditContactDialog } from "../components/EditContactDialog.js";
+import { PhoneInput } from "../components/PhoneInput.js";
+import { LanguagePicker } from "../components/LanguagePicker.js";
 import { useToast } from "../components/toast.js";
 import { useNavigate } from "react-router-dom";
+import { ApiError } from "../lib/api.js";
 import { cn } from "../lib/cn.js";
 
 export function AudienceDetailPage() {
@@ -328,10 +335,15 @@ function AddMembersDialog({
   audienceId: string;
   audienceName: string;
 }) {
+  const [mode, setMode] = useState<"select" | "create">("select");
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newLanguage, setNewLanguage] = useState("en");
   const { data: allContacts = [] } = useContacts();
   const add = useAddToAudience();
+  const create = useCreateContact();
   const { push } = useToast();
 
   const candidates = useMemo(() => {
@@ -352,6 +364,15 @@ function AddMembersDialog({
     );
   }
 
+  function resetAll() {
+    setSelectedIds([]);
+    setQuery("");
+    setNewName("");
+    setNewPhone("");
+    setNewLanguage("en");
+    setMode("select");
+  }
+
   async function submit() {
     if (selectedIds.length === 0) return;
     try {
@@ -362,8 +383,7 @@ function AddMembersDialog({
           selectedIds.length === 1 ? "" : "s"
         }`,
       });
-      setSelectedIds([]);
-      setQuery("");
+      resetAll();
       onOpenChange(false);
     } catch (err) {
       push({
@@ -374,8 +394,40 @@ function AddMembersDialog({
     }
   }
 
+  async function submitCreate(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await create.mutateAsync({
+        name: newName,
+        phone: newPhone,
+        language: newLanguage,
+        audienceIds: [audienceId],
+      });
+      push({
+        variant: "success",
+        title: `${newName} added to ${audienceName}`,
+      });
+      resetAll();
+      onOpenChange(false);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError && err.status === 400
+          ? "Check the phone number format."
+          : err instanceof Error
+            ? err.message
+            : "Could not create contact.";
+      push({ variant: "error", title: "Add contact failed", description: msg });
+    }
+  }
+
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) resetAll();
+        onOpenChange(v);
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-slate-900/30" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-2xl max-h-[85vh] flex flex-col -translate-x-1/2 -translate-y-1/2 card p-0 overflow-hidden">
@@ -384,92 +436,205 @@ function AddMembersDialog({
               Add contacts to {audienceName}
             </Dialog.Title>
             <Dialog.Description className="mt-1 text-sm text-slate-500">
-              Pick one or more contacts to add to this audience.
+              {mode === "select"
+                ? "Pick one or more contacts to add to this audience."
+                : "Create a brand-new contact and add it to this audience."}
             </Dialog.Description>
-            <div className="relative mt-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search contacts…"
-                className="input !pl-9"
-              />
+            <div
+              className="mt-4 inline-flex rounded-lg bg-slate-100 p-1"
+              role="tablist"
+              aria-label="Add contacts mode"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === "select"}
+                onClick={() => setMode("select")}
+                className={cn(
+                  "px-3 py-1.5 text-sm font-medium rounded-md transition",
+                  mode === "select"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900",
+                )}
+              >
+                Select existing
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === "create"}
+                onClick={() => setMode("create")}
+                className={cn(
+                  "px-3 py-1.5 text-sm font-medium rounded-md transition flex items-center gap-1.5",
+                  mode === "create"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900",
+                )}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Create new
+              </button>
             </div>
-          </div>
-          <div className="flex-1 overflow-auto">
-            {candidates.length === 0 ? (
-              <div className="p-8 text-center text-sm text-slate-500">
-                No contacts available to add.
+            {mode === "select" && (
+              <div className="relative mt-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search contacts…"
+                  className="input !pl-9"
+                />
               </div>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {candidates.map((c) => {
-                  const on = selectedIds.includes(c.id);
-                  return (
-                    <li
-                      key={c.id}
-                      className={cn(
-                        "flex items-center gap-3 px-5 py-3 cursor-pointer",
-                        on ? "bg-brand-50/60" : "hover:bg-slate-50",
-                      )}
-                      onClick={() => toggle(c.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        readOnly
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-slate-900">{c.name}</div>
-                        <div className="text-xs text-slate-500 tabular-nums">
-                          {formatPhoneDisplay(c.phoneE164)} ·{" "}
-                          {LANGUAGE_LABELS[
-                            c.language as keyof typeof LANGUAGE_LABELS
-                          ] ?? c.language}
-                        </div>
-                      </div>
-                      <SourceBadge source={c.source} />
-                    </li>
-                  );
-                })}
-              </ul>
             )}
           </div>
-          <div className="flex items-center justify-between gap-2 border-t border-slate-100 p-4">
-            <div className="text-sm text-slate-600">
-              {selectedIds.length} selected
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={submit}
-                disabled={selectedIds.length === 0 || add.isPending}
-              >
-                {add.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Adding…
-                  </>
+
+          {mode === "select" ? (
+            <>
+              <div className="flex-1 overflow-auto">
+                {candidates.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-slate-500">
+                    No contacts available to add.
+                  </div>
                 ) : (
-                  <>
-                    Add {selectedIds.length > 0 ? selectedIds.length : ""}{" "}
-                    contact
-                    {selectedIds.length === 1 ? "" : "s"}
-                  </>
+                  <ul className="divide-y divide-slate-100">
+                    {candidates.map((c) => {
+                      const on = selectedIds.includes(c.id);
+                      return (
+                        <li
+                          key={c.id}
+                          className={cn(
+                            "flex items-center gap-3 px-5 py-3 cursor-pointer",
+                            on ? "bg-brand-50/60" : "hover:bg-slate-50",
+                          )}
+                          onClick={() => toggle(c.id)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            readOnly
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-slate-900">
+                              {c.name}
+                            </div>
+                            <div className="text-xs text-slate-500 tabular-nums">
+                              {formatPhoneDisplay(c.phoneE164)} ·{" "}
+                              {LANGUAGE_LABELS[
+                                c.language as keyof typeof LANGUAGE_LABELS
+                              ] ?? c.language}
+                            </div>
+                          </div>
+                          <SourceBadge source={c.source} />
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
-              </button>
-            </div>
-          </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t border-slate-100 p-4">
+                <div className="text-sm text-slate-600">
+                  {selectedIds.length} selected
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={submit}
+                    disabled={selectedIds.length === 0 || add.isPending}
+                  >
+                    {add.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Adding…
+                      </>
+                    ) : (
+                      <>
+                        Add {selectedIds.length > 0 ? selectedIds.length : ""}{" "}
+                        contact
+                        {selectedIds.length === 1 ? "" : "s"}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <form
+              onSubmit={submitCreate}
+              className="flex-1 flex flex-col min-h-0"
+            >
+              <div className="flex-1 overflow-auto p-5 space-y-4">
+                <div>
+                  <label className="label" htmlFor="add-member-name">
+                    Full name
+                  </label>
+                  <input
+                    id="add-member-name"
+                    className="input mt-1"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="add-member-phone">
+                    WhatsApp number
+                  </label>
+                  <PhoneInput
+                    id="add-member-phone"
+                    value={newPhone}
+                    onChange={setNewPhone}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <div className="label mb-2">Preferred language</div>
+                  <LanguagePicker
+                    value={newLanguage}
+                    onChange={setNewLanguage}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 p-4">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={
+                    create.isPending || !newName.trim() || !newPhone.trim()
+                  }
+                >
+                  {create.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Adding…
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="h-4 w-4" />
+                      Create &amp; add
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
