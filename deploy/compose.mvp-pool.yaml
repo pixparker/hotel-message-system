@@ -5,9 +5,12 @@ name: mvp-hotel-message
 #
 # Expected layout on server:
 #   /srv/apps/hotel-message/
-#     repo/         # this repo (cloned)
-#     .env          # per-MVP env (gitignored; written by clientora deploy)
-#   (compose.yaml is this file; mount --project-directory at repo root)
+#     repo/         # this repo (cloned) — project-directory points here
+#     .env          # per-MVP env (gitignored; written by clientora mvp:add)
+#
+# Paths in this file resolve relative to --project-directory (the repo root),
+# NOT the compose file's location. That's why `env_file: ../.env` and
+# `context: .` both resolve correctly.
 
 networks:
   edge:
@@ -24,7 +27,7 @@ services:
       dockerfile: deploy/Dockerfile.api
     image: mvp-hotel-message-api:latest
     restart: unless-stopped
-    env_file: ../../.env
+    env_file: ../.env
     environment:
       NODE_ENV: production
     networks:
@@ -42,7 +45,7 @@ services:
       dockerfile: deploy/Dockerfile.worker
     image: mvp-hotel-message-worker:latest
     restart: unless-stopped
-    env_file: ../../.env
+    env_file: ../.env
     environment:
       NODE_ENV: production
     networks:
