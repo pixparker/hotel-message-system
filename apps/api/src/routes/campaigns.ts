@@ -272,8 +272,18 @@ export const campaignRoutes = new Hono()
       where: and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)),
     });
     if (!campaign) return c.json({ error: "not_found" }, 404);
+    // Cap at 500 messages. A campaign with thousands of recipients was
+    // shipping the entire list on every 1.5s live poll; capping bounds the
+    // payload while still giving the UI plenty to render. Order by sentAt
+    // DESC so recently-completed messages float to the top, with queued
+    // rows (sent_at IS NULL) ordered last.
     const [msgRows, audienceRows] = await Promise.all([
-      db.select().from(messages).where(eq(messages.campaignId, id)),
+      db
+        .select()
+        .from(messages)
+        .where(eq(messages.campaignId, id))
+        .orderBy(sql`${messages.sentAt} DESC NULLS LAST`)
+        .limit(500),
       loadCampaignAudiences(db, orgId, id),
     ]);
     return c.json({ ...campaign, messages: msgRows, audiences: audienceRows });

@@ -20,10 +20,10 @@ import { WhatsAppIcon } from "./WhatsAppIcon.js";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/send", label: "Send message", icon: Send, emphasis: true },
   { to: "/contacts", label: "Contacts", icon: Users },
   { to: "/audiences", label: "Audiences", icon: ListFilter },
   { to: "/templates", label: "Templates", icon: FileText },
-  { to: "/send", label: "Send message", icon: Send, emphasis: true },
   { to: "/reports", label: "Reports", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

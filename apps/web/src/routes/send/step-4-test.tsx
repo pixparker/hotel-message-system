@@ -139,7 +139,7 @@ export function Step4Test() {
             <div className="mt-4 flex gap-2">
               <PhoneInput value={phone} onChange={setPhone} className="flex-1" />
               <button
-                className="btn-primary"
+                className="btn-secondary"
                 onClick={sendTest}
                 disabled={sending || phone.length < 6 || !selected}
               >

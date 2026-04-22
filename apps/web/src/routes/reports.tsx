@@ -252,10 +252,13 @@ export function ReportsPage() {
                       {c.title}
                     </Link>
                     {everyoneRead && (
-                      <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-emerald-700">
-                        <CheckCircle2 className="h-3 w-3" />
-                        All recipients reached
-                      </div>
+                      <span
+                        title="All recipients reached"
+                        aria-label="All recipients reached"
+                        className="ml-1.5 inline-flex align-middle text-emerald-600"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-slate-500">
@@ -405,23 +408,43 @@ function DailyTrendCard({
           {total.toLocaleString()} messages · {activeDays} active days
         </div>
       </div>
-      <div className="flex items-end gap-1 h-28">
-        {days.map((d) => (
-          <div
-            key={d.day}
-            className="flex-1 flex flex-col items-center justify-end"
-            title={`${d.day}: ${d.count}`}
-          >
+      {total === 0 ? (
+        <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 text-sm text-slate-500">
+          No messages sent in the last 14 days yet.
+        </div>
+      ) : (
+        <div className="flex items-end gap-1 h-28 border-b border-slate-200">
+          {days.map((d) => (
             <div
-              className="w-full rounded-t bg-gradient-to-t from-brand-600 to-brand-400 hover:from-brand-700 hover:to-brand-500 transition-colors min-h-[2px] shadow-[0_1px_0_rgba(255,255,255,0.3)_inset]"
-              style={{ height: `${(d.count / max) * 100}%` }}
-            />
+              key={d.day}
+              className="group relative flex-1 flex flex-col items-center justify-end"
+              title={`${d.day}: ${d.count}`}
+            >
+              {d.count > 0 && (
+                <>
+                  <span className="pointer-events-none absolute -top-5 text-[10px] font-medium tabular-nums text-slate-500 opacity-0 transition-opacity group-hover:opacity-100">
+                    {d.count}
+                  </span>
+                  <div
+                    className="w-full rounded-t bg-gradient-to-t from-brand-600 to-brand-400 hover:from-brand-700 hover:to-brand-500 transition-colors shadow-[0_1px_0_rgba(255,255,255,0.3)_inset]"
+                    style={{ height: `${(d.count / max) * 100}%` }}
+                  />
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-2 flex gap-1 text-[10px] text-slate-400 tabular-nums">
+        {days.map((d, i) => (
+          <div key={d.day} className="flex-1 text-center">
+            {i === 0
+              ? d.day.slice(5)
+              : i === days.length - 1
+                ? "today"
+                : ""}
           </div>
         ))}
-      </div>
-      <div className="mt-2 flex justify-between text-[10px] text-slate-400 tabular-nums">
-        <span>{days[0]!.day.slice(5)}</span>
-        <span>today</span>
       </div>
     </div>
   );

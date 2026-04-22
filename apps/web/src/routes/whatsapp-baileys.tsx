@@ -5,17 +5,24 @@ import QRCode from "qrcode";
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
+  CheckCheck,
   CheckCircle2,
   Loader2,
   Phone,
+  Send,
   ShieldAlert,
   Unplug,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { Page } from "../components/Page.js";
+import { PhoneInput } from "../components/PhoneInput.js";
 import { api, ApiError } from "../lib/api.js";
 import { useAuth } from "../state/auth.js";
 import { useToast } from "../components/toast.js";
+import { useCampaignStream } from "../hooks/useCampaignStream.js";
+import { celebrate } from "../lib/celebrate.js";
 
 type Status = "none" | "pending" | "connected" | "logged_out" | "failed";
 
@@ -29,6 +36,10 @@ interface BaileysStatus {
   coldPolicy?: "warn" | "block" | "allow";
   acknowledgedAt?: string | null;
   bannedSuspectedAt?: string | null;
+}
+
+interface OrgSettings {
+  defaultTestPhone: string | null;
 }
 
 /**
@@ -164,6 +175,7 @@ function PairFlow({ onPaired }: { onPaired: () => void }) {
       } else if (e.type === "connected") {
         setStage("connected");
         setPairing(false);
+        celebrate();
         push({
           variant: "success",
           title: "Connected",
@@ -323,7 +335,257 @@ function ConnectedPanel({
         </button>
       </div>
 
+      <TestSendCard />
+
       <SafetyPanel status={status} onSaved={onRefetch} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * One-shot test send for the just-paired session. Posts to the existing
+ * /campaigns/test endpoint, then polls the campaign totals until the single
+ * message reaches a terminal status (read / failed). This gives the user a
+ * visible end-to-end check right after the QR scan without leaving the page.
+ */
+function TestSendCard() {
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api<OrgSettings>("/api/settings"),
+  });
+  const [phone, setPhone] = useState("");
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [sentAt, setSentAt] = useState<Date | null>(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Pre-fill with the org's default test number once settings load.
+  useEffect(() => {
+    if (!phone && settings?.defaultTestPhone) {
+      setPhone(settings.defaultTestPhone);
+    }
+  }, [settings, phone]);
+
+  async function send() {
+    if (!phone) return;
+    setSending(true);
+    setError(null);
+    setCampaignId(null);
+    try {
+      const now = new Date();
+      const res = await api<{ campaignId: string }>("/api/campaigns/test", {
+        method: "POST",
+        body: JSON.stringify({
+          phone,
+          customBodies: {
+            en: `✅ Test from your dashboard at ${now.toLocaleTimeString()}. If you see this, your connection works.`,
+          },
+          language: "en",
+        }),
+      });
+      setCampaignId(res.campaignId);
+      setSentAt(now);
+    } catch (err) {
+      const detail =
+        err instanceof ApiError && (err.body as { detail?: string })?.detail
+          ? (err.body as { detail?: string }).detail
+          : err instanceof Error
+            ? err.message
+            : "send_failed";
+      setError(detail ?? "send_failed");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="card p-6 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold flex items-center gap-2">
+          <Send className="h-4 w-4 text-brand-600" />
+          Send a test message
+        </h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Quickest way to verify the connection is real. We'll send a short
+          message and show every status the carrier returns.
+        </p>
+      </div>
+
+      <div>
+        <label className="label" htmlFor="testphone">
+          Recipient
+        </label>
+        <PhoneInput
+          id="testphone"
+          value={phone}
+          onChange={setPhone}
+          className="mt-1"
+          placeholder="+9055…"
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          {settings?.defaultTestPhone
+            ? "Pre-filled with your default test number. Edit if you want."
+            : "Use your own number to verify delivery."}
+        </p>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          className="btn-primary"
+          onClick={send}
+          disabled={!phone || sending}
+        >
+          {sending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Sending…
+            </>
+          ) : (
+            <>
+              <Send className="h-4 w-4" />
+              Send test
+            </>
+          )}
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          <div className="font-medium flex items-center gap-1.5">
+            <X className="h-4 w-4" /> Send failed
+          </div>
+          <div className="mt-0.5 text-xs text-rose-700 font-mono break-all">{error}</div>
+        </div>
+      )}
+
+      {campaignId && sentAt && (
+        <TestSendProgress campaignId={campaignId} sentAt={sentAt} />
+      )}
+    </div>
+  );
+}
+
+type TestStage = "queued" | "sent" | "delivered" | "read" | "failed";
+
+function TestSendProgress({
+  campaignId,
+  sentAt,
+}: {
+  campaignId: string;
+  sentAt: Date;
+}) {
+  const stream = useCampaignStream(campaignId);
+  const t = stream.totals;
+  // For a single-message test campaign, aggregate counters collapse to a
+  // single stage. Failure wins over anything else.
+  const stage: TestStage =
+    t.failed > 0
+      ? "failed"
+      : t.seen > 0
+        ? "read"
+        : t.delivered > 0
+          ? "delivered"
+          : t.sent > 0
+            ? "sent"
+            : "queued";
+
+  const terminal = stage === "read" || stage === "failed";
+
+  const headline =
+    stage === "failed"
+      ? "Send failed — see the error below"
+      : stage === "read"
+        ? "Read on recipient's phone"
+        : stage === "delivered"
+          ? "Delivered to recipient's phone"
+          : stage === "sent"
+            ? "Accepted by WhatsApp — awaiting delivery"
+            : "Queued for sending…";
+
+  return (
+    <div
+      className={
+        "rounded-md border p-4 " +
+        (stage === "failed"
+          ? "border-rose-200 bg-rose-50"
+          : stage === "read" || stage === "delivered"
+            ? "border-emerald-200 bg-emerald-50"
+            : "border-slate-200 bg-slate-50")
+      }
+    >
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">
+          {terminal ? headline : headline}
+        </div>
+        <div className="text-xs text-slate-500 tabular-nums">
+          {sentAt.toLocaleTimeString()}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
+        <StageDot label="Queued" reached={stage !== "failed" || true} done={stage !== "queued" || t.sent + t.delivered + t.seen + t.failed > 0} />
+        <StageDot label="Sent" reached={["sent", "delivered", "read", "failed"].includes(stage)} done={["delivered", "read"].includes(stage)} />
+        <StageDot label="Delivered" reached={["delivered", "read"].includes(stage)} done={stage === "read"} />
+        <StageDot label="Read" reached={stage === "read"} done={stage === "read"} />
+      </div>
+
+      {stage === "failed" && (
+        <div className="mt-3 text-xs text-rose-700">
+          The worker reported a send failure. Check the worker logs for details
+          — a very common cause is a number that isn't on WhatsApp, or a session
+          that got kicked after you scanned the QR.
+        </div>
+      )}
+
+      {stage === "sent" && (
+        <div className="mt-3 text-xs text-slate-600">
+          WhatsApp accepted the message. Delivery updates arrive as soon as
+          the recipient's phone is online — this can take a few seconds.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StageDot({
+  label,
+  reached,
+  done,
+}: {
+  label: string;
+  reached: boolean;
+  done: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div
+        className={
+          "flex h-7 w-7 items-center justify-center rounded-full border-2 " +
+          (done
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : reached
+              ? "border-brand-500 bg-white text-brand-600"
+              : "border-slate-200 bg-white text-slate-300")
+        }
+      >
+        {done ? (
+          <CheckCheck className="h-3.5 w-3.5" />
+        ) : reached ? (
+          <Check className="h-3.5 w-3.5" />
+        ) : (
+          <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+        )}
+      </div>
+      <div
+        className={
+          "tabular-nums " +
+          (reached ? "font-medium text-slate-700" : "text-slate-400")
+        }
+      >
+        {label}
+      </div>
     </div>
   );
 }
