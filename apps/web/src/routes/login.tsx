@@ -7,8 +7,8 @@ import { useAuth } from "../state/auth.js";
 import { useToast } from "../components/toast.js";
 
 export function LoginPage() {
-  const [email, setEmail] = useState("admin@hotel.local");
-  const [password, setPassword] = useState("changeme");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const login = useAuth((s) => s.login);
   const navigate = useNavigate();
