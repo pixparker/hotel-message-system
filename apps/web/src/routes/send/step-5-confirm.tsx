@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import * as Dialog from "@radix-ui/react-dialog";
-import { ArrowLeft, Send, Loader2, Bookmark } from "lucide-react";
+import {
+  ArrowLeft,
+  Send,
+  Loader2,
+  Bookmark,
+  ShieldAlert,
+  CheckCircle2,
+} from "lucide-react";
 import { LANGUAGE_LABELS, RTL_LANGUAGES, type Language } from "@hms/shared";
 import { useWizard } from "../../state/wizard.js";
 import { useAudiences } from "../../hooks/useAudiences.js";
@@ -10,6 +18,23 @@ import { api } from "../../lib/api.js";
 import { useToast } from "../../components/toast.js";
 import { LANGUAGE_FLAGS } from "../../components/LanguagePicker.js";
 import { AudienceChip } from "../../components/AudienceChip.js";
+
+interface BaileysStatus {
+  status: "none" | "pending" | "connected" | "logged_out" | "failed";
+  coldPolicy?: "warn" | "block" | "allow";
+}
+
+interface PreflightResult {
+  total: number;
+  safe: number;
+  cold: number;
+  invalid: number;
+  riskyContactIds: string[];
+}
+
+interface Settings {
+  waProvider: "mock" | "cloud" | "baileys";
+}
 
 function suggestTitle(
   bodies: Partial<Record<Language, string>>,
@@ -39,6 +64,31 @@ export function Step5Confirm() {
   const [confirm, setConfirm] = useState(false);
   const [sending, setSending] = useState(false);
   const { push } = useToast();
+
+  // Baileys-only: pre-flight check for ban risk. Skipped when the tenant
+  // runs on Cloud/Mock — the counts would be noise without the sender-reputation risk.
+  const settingsQ = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api<Settings>("/api/settings"),
+  });
+  const baileysQ = useQuery({
+    queryKey: ["baileys-status"],
+    queryFn: () => api<BaileysStatus>("/api/settings/whatsapp/baileys/status"),
+  });
+  const isBaileys = settingsQ.data?.waProvider === "baileys";
+  const coldPolicy = baileysQ.data?.coldPolicy ?? "warn";
+  const preflightQ = useQuery({
+    queryKey: ["preflight", selectedAudienceIds.join(",")],
+    queryFn: () =>
+      api<PreflightResult>("/api/campaigns/preflight", {
+        method: "POST",
+        body: JSON.stringify({ audienceIds: selectedAudienceIds }),
+      }),
+    enabled: isBaileys && selectedAudienceIds.length > 0,
+    staleTime: 30_000,
+  });
+  const preflight = preflightQ.data;
+  const coldBlocked = isBaileys && coldPolicy === "block" && (preflight?.cold ?? 0) > 0;
 
   const recipientCount = preview.data?.total ?? 0;
   const perLanguageCount = useMemo(() => {
@@ -203,6 +253,14 @@ export function Step5Confirm() {
         </div>
       )}
 
+      {isBaileys && selectedAudienceIds.length > 0 && (
+        <PreflightCard
+          loading={preflightQ.isLoading}
+          result={preflight}
+          coldPolicy={coldPolicy}
+        />
+      )}
+
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="text-sm font-semibold">Message preview</div>
@@ -255,8 +313,13 @@ export function Step5Confirm() {
         </button>
         <button
           className="btn-primary"
-          disabled={recipientCount === 0}
+          disabled={recipientCount === 0 || coldBlocked}
           onClick={() => setConfirm(true)}
+          title={
+            coldBlocked
+              ? "Your safety policy blocks sending to cold recipients. Change it in Settings."
+              : undefined
+          }
         >
           <Send className="h-4 w-4" />
           Send to {recipientCount} recipient{recipientCount === 1 ? "" : "s"}
@@ -303,6 +366,105 @@ function Summary({ label, value }: { label: string; value: string }) {
     <div>
       <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
       <div className="mt-1 text-base font-medium truncate">{value}</div>
+    </div>
+  );
+}
+
+function PreflightCard({
+  loading,
+  result,
+  coldPolicy,
+}: {
+  loading: boolean;
+  result: PreflightResult | undefined;
+  coldPolicy: "warn" | "block" | "allow";
+}) {
+  if (loading) {
+    return (
+      <div className="card p-5 flex items-center gap-3 text-sm text-slate-500">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Checking recipients for ban risk…
+      </div>
+    );
+  }
+  if (!result) return null;
+
+  const hasCold = result.cold > 0;
+  const isBlocking = hasCold && coldPolicy === "block";
+
+  return (
+    <div
+      className={
+        "card p-5 space-y-3 " +
+        (isBlocking
+          ? "border-rose-200 bg-rose-50"
+          : hasCold
+            ? "border-amber-200 bg-amber-50"
+            : "border-emerald-200 bg-emerald-50")
+      }
+    >
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        {isBlocking ? (
+          <ShieldAlert className="h-4 w-4 text-rose-600" />
+        ) : hasCold ? (
+          <ShieldAlert className="h-4 w-4 text-amber-600" />
+        ) : (
+          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+        )}
+        Ban-risk pre-flight
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        <PreflightStat label="Safe" value={result.safe} tone="emerald" />
+        <PreflightStat label="Cold" value={result.cold} tone="amber" />
+        <PreflightStat label="Invalid" value={result.invalid} tone="slate" />
+      </div>
+
+      {hasCold ? (
+        <p className="text-xs text-slate-700">
+          <strong>{result.cold}</strong> recipient{result.cold === 1 ? "" : "s"}{" "}
+          haven't messaged you first. These are the highest ban-risk sends. A
+          two-way conversation with each recipient dramatically reduces the
+          chance of your number being banned — consider asking recipients to
+          message you first.
+          {isBlocking && (
+            <span className="block mt-2 font-medium text-rose-700">
+              Your safety policy is set to <em>Block</em>. Remove cold
+              recipients or change the policy in Settings.
+            </span>
+          )}
+        </p>
+      ) : (
+        <p className="text-xs text-slate-700">
+          Every recipient has a prior conversation with you. This is the safest
+          scenario for an unofficial WhatsApp connection.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function PreflightStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "emerald" | "amber" | "slate";
+}) {
+  const toneCls =
+    tone === "emerald"
+      ? "text-emerald-700"
+      : tone === "amber"
+        ? "text-amber-700"
+        : "text-slate-600";
+  return (
+    <div className="rounded-md bg-white px-3 py-2 shadow-sm">
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={"mt-0.5 text-lg font-semibold tabular-nums " + toneCls}>
+        {value}
+      </div>
     </div>
   );
 }

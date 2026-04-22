@@ -11,6 +11,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.21",
+    "pino": "^9.5.0"
+  },
   "devDependencies": {
     "typescript": "^5.7.2",
     "@types/node": "^22.10.2"

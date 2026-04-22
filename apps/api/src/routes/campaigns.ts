@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { and, eq, desc, inArray } from "drizzle-orm";
+import { and, eq, desc, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import {
   campaigns,
   campaignAudiences,
@@ -178,6 +179,74 @@ export const campaignRoutes = new Hono()
     }));
 
     return c.json({ total: rows.length, byLanguage, sample });
+  })
+  /**
+   * Pre-flight safety check for a set of audiences. Answers:
+   *   - how many recipients have a prior inbound (they've messaged us first)
+   *   - how many have a prior successful outbound (we've messaged them before)
+   *   - how many are "cold" (never any contact — highest ban risk)
+   *
+   * MVP note: we intentionally rely on our own DB rather than a live
+   * `onWhatsApp()` call against the Baileys socket. Wiring live checks over
+   * Redis RPC is follow-on work; `invalid` counts are reported as 0 for now.
+   */
+  .post("/preflight", async (c) => {
+    const db = c.var.db;
+    const orgId = currentOrgId(c);
+    const body = z
+      .object({ audienceIds: z.array(z.string().uuid()).min(1) })
+      .parse(await c.req.json());
+
+    const recipients = await resolveRecipientsByAudiences(db, orgId, body.audienceIds);
+    if (recipients.length === 0) {
+      return c.json({
+        total: 0,
+        safe: 0,
+        cold: 0,
+        invalid: 0,
+        riskyContactIds: [] as string[],
+      });
+    }
+
+    const phones = Array.from(new Set(recipients.map((r) => r.phoneE164)));
+
+    // Known-good numbers: either have messaged us (wa_inbound_touches) or
+    // we've successfully sent to them at least once (messages with providerMessageId).
+    const inboundRows = (await db.execute(
+      sql`SELECT from_e164 FROM wa_inbound_touches
+           WHERE org_id = ${orgId} AND from_e164 = ANY(${phones})`,
+    )) as unknown as Array<{ from_e164: string }>;
+    const priorOutRows = (await db.execute(
+      sql`SELECT DISTINCT phone_e164 FROM messages
+           WHERE org_id = ${orgId}
+             AND phone_e164 = ANY(${phones})
+             AND provider_message_id IS NOT NULL
+             AND status IN ('sent','delivered','read')`,
+    )) as unknown as Array<{ phone_e164: string }>;
+
+    const safeSet = new Set<string>([
+      ...inboundRows.map((r) => r.from_e164),
+      ...priorOutRows.map((r) => r.phone_e164),
+    ]);
+
+    const riskyContactIds: string[] = [];
+    let safe = 0;
+    let cold = 0;
+    for (const r of recipients) {
+      if (safeSet.has(r.phoneE164)) safe += 1;
+      else {
+        cold += 1;
+        riskyContactIds.push(r.id);
+      }
+    }
+
+    return c.json({
+      total: recipients.length,
+      safe,
+      cold,
+      invalid: 0,
+      riskyContactIds,
+    });
   })
   .get("/:id", async (c) => {
     const db = c.var.db;

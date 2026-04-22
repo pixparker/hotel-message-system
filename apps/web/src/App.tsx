@@ -18,6 +18,7 @@ import { ReportsPage } from "./routes/reports.js";
 import { CampaignDetailPage } from "./routes/campaign-detail.js";
 import { SettingsPage } from "./routes/settings.js";
 import { WhatsAppConnectPage } from "./routes/whatsapp-connect.js";
+import { WhatsAppBaileysPage } from "./routes/whatsapp-baileys.js";
 import { TemplatesPage } from "./routes/templates.js";
 import { TemplateEditPage } from "./routes/template-edit.js";
 
@@ -60,6 +61,7 @@ export function App() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/whatsapp" element={<WhatsAppConnectPage />} />
+            <Route path="/settings/whatsapp-baileys" element={<WhatsAppBaileysPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
