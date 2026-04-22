@@ -2,13 +2,27 @@ import { DisconnectReason } from "@whiskeysockets/baileys";
 
 /**
  * Whether a given Baileys disconnect should trigger an auto-reconnect.
- * `loggedOut` means WhatsApp explicitly terminated the linked device — no
- * amount of retries recovers from that; the user has to re-scan the QR.
+ *
+ * `loggedOut`, `forbidden`, `connectionReplaced` are all terminal: WhatsApp
+ * has explicitly rejected this session identity. Reconnecting with the same
+ * creds just reproduces the rejection in a loop and — worse — in the
+ * `connectionReplaced` case each retry may itself be seen as another pairing
+ * attempt, tripping ban heuristics. The user must re-scan a QR to recover.
  */
 export function shouldReconnect(statusCode: number | undefined): boolean {
   if (statusCode === DisconnectReason.loggedOut) return false;
   if (statusCode === DisconnectReason.forbidden) return false;
+  if (statusCode === DisconnectReason.connectionReplaced) return false;
   return true;
+}
+
+/** Terminal-but-we-should-clean-up statuses (treat as logged-out for UI). */
+export function isTerminalKick(statusCode: number | undefined): boolean {
+  return (
+    statusCode === DisconnectReason.loggedOut ||
+    statusCode === DisconnectReason.forbidden ||
+    statusCode === DisconnectReason.connectionReplaced
+  );
 }
 
 /**

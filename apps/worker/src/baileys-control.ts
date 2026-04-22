@@ -32,6 +32,12 @@ export interface BaileysControlDeps {
   onDriverReady: (orgId: string, driver: WaDriver) => void;
   /** Called whenever a driver should be removed (disconnect/logout/reset). */
   onDriverEvicted: (orgId: string) => Promise<void>;
+  /**
+   * Whether the worker already has an open driver for this org. Lets rehydrate
+   * skip orgs that a concurrent BullMQ job already opened — otherwise both
+   * paths race to create sockets and WhatsApp kicks one as `conflict replaced`.
+   */
+  isDriverCached: (orgId: string) => boolean;
 }
 
 /**
@@ -89,6 +95,10 @@ async function rehydrateConnectedSessions(deps: BaileysControlDeps): Promise<voi
   for (const orgId of orgIds) {
     const jitter = Math.floor(Math.random() * 30_000);
     setTimeout(() => {
+      // Skip if a BullMQ job already lazily opened a driver for this org —
+      // double-opening with the same creds gets one socket kicked with
+      // `stream:error conflict replaced`.
+      if (deps.isDriverCached(orgId)) return;
       openSessionForOrg(deps, orgId, { fresh: false }).catch((err) => {
         deps.log.error({ err, orgId }, "baileys-control: rehydrate open failed");
       });
@@ -113,10 +123,13 @@ async function openSessionForOrg(
   opts: { fresh: boolean },
 ): Promise<void> {
   const { db, pub, log } = deps;
+  // Fresh pair wipes creds AND evicts any existing driver. Rehydrate only
+  // evicts if we're sure the cached one is stale — otherwise we'd kick a
+  // perfectly good lazy-opened driver off the same creds.
   if (opts.fresh) {
     await clearSession(db, orgId);
+    await deps.onDriverEvicted(orgId);
   }
-  await deps.onDriverEvicted(orgId);
 
   const { state, saveCreds } = await buildBaileysDeps(db, orgId);
 

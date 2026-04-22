@@ -43,6 +43,12 @@ interface CachedDriver {
 const driverCache = new Map<string, CachedDriver>();
 const mockDriver = createDriver("mock");
 
+// Per-org mutex for driver construction. Baileys sockets are long-lived and
+// expensive — and WhatsApp kicks us with `conflict replaced` if we open two
+// sockets for the same creds. When many BullMQ jobs fire at once on a cache
+// miss, they'd all race to build a driver. Cache the build promise.
+const pendingDrivers = new Map<string, Promise<WaDriver>>();
+
 // Rolling failure tracker for the Baileys circuit breaker.
 // key: orgId → { successes, failures, resetAt }
 interface FailureWindow {
@@ -96,61 +102,76 @@ async function getDriverForOrg(orgId: string): Promise<WaDriver> {
   const cached = driverCache.get(orgId);
   if (cached && cached.key === nextKey) return cached.driver;
 
-  // Settings changed — evict the old driver first.
-  if (cached) await evictDriverForOrg(orgId);
+  // Serialize concurrent builds per org. Multiple BullMQ jobs hitting a cache
+  // miss at the same time would otherwise each build + connect a driver —
+  // Baileys would open two WebSockets with the same creds and WA kicks one.
+  const inflight = pendingDrivers.get(orgId);
+  if (inflight) return inflight;
 
-  const [row] = await db.select().from(settings).where(eq(settings.orgId, orgId));
-  const provider: ProviderName = (row?.waProvider as ProviderName) ?? env.WA_PROVIDER;
+  const build = (async (): Promise<WaDriver> => {
+    const currentKey = await settingsKey(orgId);
+    const stillCached = driverCache.get(orgId);
+    if (stillCached && stillCached.key === currentKey) return stillCached.driver;
+    if (stillCached) await evictDriverForOrg(orgId);
 
-  if (provider === "mock") {
-    driverCache.set(orgId, { driver: mockDriver, provider, key: nextKey });
-    return mockDriver;
-  }
+    const [row] = await db.select().from(settings).where(eq(settings.orgId, orgId));
+    const provider: ProviderName =
+      (row?.waProvider as ProviderName) ?? env.WA_PROVIDER;
 
-  if (provider === "cloud") {
-    const cfg = (row?.waConfig ?? {}) as {
-      accessToken?: string;
-      phoneNumberId?: string;
-    };
-    if (!cfg.accessToken || !cfg.phoneNumberId) {
-      throw new Error(`cloud driver missing credentials for org ${orgId}`);
+    if (provider === "mock") {
+      driverCache.set(orgId, { driver: mockDriver, provider, key: currentKey });
+      return mockDriver;
     }
-    const accessToken = decryptSecret(cfg.accessToken);
-    const drv = createDriver("cloud", {
-      cloud: { accessToken, phoneNumberId: cfg.phoneNumberId },
-    });
-    wireStatusHandler(drv);
-    driverCache.set(orgId, { driver: drv, provider, key: nextKey });
-    return drv;
-  }
 
-  if (provider === "baileys") {
-    // Baileys drivers are instantiated lazily here if no pair/rehydrate
-    // event has brought them up yet. We connect synchronously so the first
-    // send either finds a live socket or BullMQ retries.
-    const session = await loadSessionSnapshot(db, orgId);
-    if (!session || session.status !== "connected" || !session.phoneE164) {
-      throw new Error(`baileys driver not connected for org ${orgId}`);
+    if (provider === "cloud") {
+      const cfg = (row?.waConfig ?? {}) as {
+        accessToken?: string;
+        phoneNumberId?: string;
+      };
+      if (!cfg.accessToken || !cfg.phoneNumberId) {
+        throw new Error(`cloud driver missing credentials for org ${orgId}`);
+      }
+      const accessToken = decryptSecret(cfg.accessToken);
+      const drv = createDriver("cloud", {
+        cloud: { accessToken, phoneNumberId: cfg.phoneNumberId },
+      });
+      wireStatusHandler(drv);
+      driverCache.set(orgId, { driver: drv, provider, key: currentKey });
+      return drv;
     }
-    const { state, saveCreds } = await buildBaileysDeps(db, orgId);
-    const drv = createDriver("baileys", {
-      baileys: {
-        orgId,
-        authState: state,
-        saveCreds,
-        onPairingEvent: (e) => {
-          pub.publish(baileysPairChannel(orgId), JSON.stringify(e)).catch(() => {});
+
+    if (provider === "baileys") {
+      const session = await loadSessionSnapshot(db, orgId);
+      if (!session || session.status !== "connected" || !session.phoneE164) {
+        throw new Error(`baileys driver not connected for org ${orgId}`);
+      }
+      const { state, saveCreds } = await buildBaileysDeps(db, orgId);
+      const drv = createDriver("baileys", {
+        baileys: {
+          orgId,
+          authState: state,
+          saveCreds,
+          onPairingEvent: (e) => {
+            pub.publish(baileysPairChannel(orgId), JSON.stringify(e)).catch(() => {});
+          },
         },
-      },
-    });
-    const anyDrv = drv as WaDriver & { connect?: () => Promise<void> };
-    if (anyDrv.connect) await anyDrv.connect();
-    wireStatusHandler(drv);
-    driverCache.set(orgId, { driver: drv, provider, key: nextKey, session });
-    return drv;
-  }
+      });
+      const anyDrv = drv as WaDriver & { connect?: () => Promise<void> };
+      if (anyDrv.connect) await anyDrv.connect();
+      wireStatusHandler(drv);
+      driverCache.set(orgId, { driver: drv, provider, key: currentKey, session });
+      return drv;
+    }
 
-  throw new Error(`unsupported provider ${provider}`);
+    throw new Error(`unsupported provider ${provider}`);
+  })();
+
+  pendingDrivers.set(orgId, build);
+  try {
+    return await build;
+  } finally {
+    pendingDrivers.delete(orgId);
+  }
 }
 
 // Map providerMessageId → {orgId, campaignId, messageId} so status callbacks
@@ -206,12 +227,37 @@ webhookSub.on("message", async (_, raw) => {
   }
 });
 
+// Ordered progression for outbound messages. "failed" is only a valid
+// transition from "queued" / (not yet in any positive state). A later "failed"
+// event must never overwrite a successful ack — providers occasionally emit
+// spurious error events for messages that actually delivered.
+const STATUS_RANK: Record<string, number> = {
+  queued: 0,
+  failed: 1,
+  sent: 2,
+  delivered: 3,
+  read: 4,
+};
+
 async function onStatusEvent(e: import("@hms/wa-driver").StatusEvent) {
   const ref = inflight.get(e.providerMessageId);
   if (!ref) return;
   const { orgId } = ref;
 
-  await asTenant(orgId, async (tx) => {
+  const applied = await asTenant(orgId, async (tx) => {
+    const [current] = await tx
+      .select({ status: messages.status })
+      .from(messages)
+      .where(eq(messages.id, ref!.messageId));
+    if (!current) return false;
+
+    const currentRank = STATUS_RANK[current.status] ?? 0;
+    const nextRank = STATUS_RANK[e.status] ?? 0;
+
+    // Idempotent + monotonic: skip equal or lower statuses. This drops
+    // duplicate ACKs and refuses to demote a delivered/read message to failed.
+    if (nextRank <= currentRank) return false;
+
     const now = e.at ?? new Date();
     const patch: Record<string, unknown> = { status: e.status };
     if (e.status === "delivered") patch.deliveredAt = now;
@@ -229,7 +275,10 @@ async function onStatusEvent(e: import("@hms/wa-driver").StatusEvent) {
     await tx.execute(
       sql`update campaigns set ${sql.raw(counterCol)} = ${sql.raw(counterCol)} + 1 where id = ${ref!.campaignId}`,
     );
+    return true;
   });
+
+  if (!applied) return;
 
   await pub.publish(
     `campaign:${ref.campaignId}`,
@@ -514,6 +563,7 @@ startBaileysControlListener({
     });
   },
   onDriverEvicted: evictDriverForOrg,
+  isDriverCached: (orgId) => driverCache.has(orgId) || pendingDrivers.has(orgId),
 }).catch((err) => {
   log.error({ err }, "failed to start baileys control listener");
 });

@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@hms/db";
 import { waBaileysKeys, waBaileysSessions } from "@hms/db";
 import {
@@ -50,16 +50,23 @@ export async function buildBaileysDeps(
       return withTenant(db, orgId, async (tx) => {
         const out: Record<string, SignalDataTypeMap[typeof type]> = {};
         if (ids.length === 0) return out;
-        const rows = (await tx.execute(
-          sql`SELECT key_id, value FROM wa_baileys_keys
-              WHERE org_id = ${orgId}
-                AND key_type = ${type}
-                AND key_id = ANY(${ids})`,
-        )) as unknown as Array<{ key_id: string; value: Buffer }>;
+        // Use Drizzle's typed `inArray` — raw `ANY(${ids})` makes postgres-js
+        // pass the JS array as a scalar, which Postgres then fails to parse
+        // as an array literal and blow up the entire Signal decrypt path.
+        const rows = await tx
+          .select({ keyId: waBaileysKeys.keyId, value: waBaileysKeys.value })
+          .from(waBaileysKeys)
+          .where(
+            and(
+              eq(waBaileysKeys.orgId, orgId),
+              eq(waBaileysKeys.keyType, type),
+              inArray(waBaileysKeys.keyId, ids),
+            ),
+          );
         for (const row of rows) {
           const decrypted = decryptBytes(row.value);
           const parsed = JSON.parse(decrypted.toString("utf8"), BufferJSON.reviver);
-          out[row.key_id] = parsed as SignalDataTypeMap[typeof type];
+          out[row.keyId] = parsed as SignalDataTypeMap[typeof type];
         }
         return out;
       });

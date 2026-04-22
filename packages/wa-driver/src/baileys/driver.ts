@@ -1,7 +1,6 @@
 import type { WASocket } from "@whiskeysockets/baileys";
 import makeWASocket, {
   Browsers,
-  DisconnectReason,
   fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
@@ -12,10 +11,11 @@ import type {
   StatusEvent,
   WaDriver,
 } from "../driver.js";
-import type { BaileysDriverDeps, PairingEvent } from "./types.js";
+import type { BaileysDriverDeps } from "./types.js";
 import {
   MAX_RECONNECT_ATTEMPTS,
   backoffDelayMs,
+  isTerminalKick,
   shouldReconnect,
 } from "./reconnect.js";
 
@@ -68,12 +68,33 @@ export class BaileysWaDriver implements WaDriver {
 
   async close(): Promise<void> {
     this.closed = true;
-    try {
-      this.sock?.end(undefined);
-    } catch {
-      /* ignore */
-    }
+    const sock = this.sock;
     this.sock = null;
+    if (!sock) return;
+    // Wait for the underlying WebSocket to actually close before returning —
+    // otherwise a caller that immediately opens a new socket with the same
+    // creds would have two devices registered on WhatsApp briefly, and the
+    // server kicks one with `stream:error conflict replaced`.
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      try {
+        sock.ws?.once?.("close", done);
+        sock.ev?.on?.("connection.update", (u: { connection?: string }) => {
+          if (u.connection === "close") done();
+        });
+        sock.end(undefined);
+      } catch {
+        done();
+        return;
+      }
+      // Hard timeout — don't hang the worker if the socket refuses to die.
+      setTimeout(done, 2_000);
+    });
   }
 
   async sendText(to: string, body: string): Promise<SendResult> {
@@ -206,10 +227,12 @@ export class BaileysWaDriver implements WaDriver {
         (lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)
           ?.output?.statusCode ?? undefined;
 
-      // Explicit logout: WhatsApp terminated the linked device. This is the
-      // strongest signal of a potential ban — surface it to the caller so
-      // they can stop retrying and warn the user.
-      if (statusCode === DisconnectReason.loggedOut) {
+      // Terminal kick: WhatsApp has rejected this session identity (explicit
+      // logout, forbidden, or replaced by a newer pair). Retrying with the
+      // same creds just reproduces the rejection — and each retry may itself
+      // be flagged as ban-worthy behavior. Mark the session dead; the user
+      // must re-scan a QR to recover.
+      if (isTerminalKick(statusCode)) {
         this.deps.onPairingEvent?.({ type: "logged_out" });
         await this.deps.onSessionLoggedOut?.().catch(() => {});
         await this.close();
@@ -335,14 +358,19 @@ function jidToE164(jid: string): string | null {
 /**
  * Map Baileys' numeric WAMessageStatus → our StatusEvent status.
  *   0 ERROR | 1 PENDING | 2 SERVER_ACK (sent) | 3 DELIVERY_ACK | 4 READ | 5 PLAYED
- * SERVER_ACK is ignored because we set status='sent' on the send path itself.
+ *
+ * We intentionally DO NOT map `0 ERROR` to "failed". Baileys emits spurious
+ * ERROR events during normal operation (key rotation, server-side transient
+ * hiccups, duplicate delivery notifications) — even for messages that actually
+ * delivered. Real send failures are caught by the `sendMessage` throw path in
+ * the worker. Better to miss a rare genuine delivery failure than to incorrectly
+ * mark delivered messages as failed.
+ * SERVER_ACK (2) is also ignored — we set status='sent' on the send path itself.
  */
 function mapBaileysStatus(
   status: number | null | undefined,
 ): StatusEvent["status"] | null {
   switch (status) {
-    case 0:
-      return "failed";
     case 3:
       return "delivered";
     case 4:
