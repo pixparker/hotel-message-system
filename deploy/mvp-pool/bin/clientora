@@ -331,10 +331,16 @@ cmd_deploy() {
 
 	local sha; sha=$(cd "$app_dir/repo" && git rev-parse --short HEAD)
 	log "$name: building images at $sha"
-	APP_VERSION="$sha" compose_mvp "$name" build --pull
+	# Full rebuild: guarantees APP_VERSION is re-baked into the web bundle
+	# every deploy. Cache mounts (e.g. pnpm store) still persist, so pnpm
+	# install doesn't re-download packages.
+	APP_VERSION="$sha" compose_mvp "$name" build --pull --no-cache
 
 	log "$name: running DB migrations"
 	cmd_migrate "$name"
+
+	log "$name: seeding (idempotent)"
+	cmd_seed "$name"
 
 	log "$name: starting services"
 	compose_mvp "$name" up -d --remove-orphans
@@ -352,6 +358,15 @@ cmd_migrate() {
 	# then root node_modules, so we don't depend on pnpm's placement choice.
 	compose_mvp "$name" run --rm --no-deps --entrypoint "" "$API_SERVICE" \
 		sh -c 'for p in packages/db/node_modules/.bin/tsx node_modules/.bin/tsx; do [ -x "$p" ] && exec "$p" packages/db/src/migrate.ts; done; echo "tsx not found in image" >&2; exit 1'
+}
+
+cmd_seed() {
+	# Idempotent: the seed script bails early if an org already exists, so
+	# it's safe to call on every deploy.
+	local name="${1:-}"; [[ -n "$name" ]] || die "usage: clientora seed <name>"
+	load_mvp_meta "$name"
+	compose_mvp "$name" run --rm --no-deps --entrypoint "" "$API_SERVICE" \
+		sh -c 'for p in packages/db/node_modules/.bin/tsx node_modules/.bin/tsx; do [ -x "$p" ] && exec "$p" packages/db/src/seed.ts; done; echo "tsx not found in image" >&2; exit 1'
 }
 
 cmd_logs() {
@@ -453,8 +468,9 @@ MVP lifecycle:
   mvp:remove <name> --yes                          stops, backs up DB, drops DB+role
 
 Deploy / runtime:
-  deploy <name>                                    pull + build + migrate + up + reload proxy
+  deploy <name>                                    pull + build + migrate + seed + up + reload proxy
   migrate <name>                                   run DB migrations only
+  seed <name>                                      run seed script (idempotent)
   logs <name> [service]
   ps <name>
   restart <name> [service]  |  stop <name>  |  start <name>
@@ -487,6 +503,7 @@ main() {
 		mvp:remove)       cmd_mvp_remove "$@" ;;
 		deploy)           cmd_deploy "$@" ;;
 		migrate)          cmd_migrate "$@" ;;
+		seed)             cmd_seed "$@" ;;
 		logs)             cmd_logs "$@" ;;
 		ps)               cmd_ps "$@" ;;
 		restart)          cmd_restart "$@" ;;
