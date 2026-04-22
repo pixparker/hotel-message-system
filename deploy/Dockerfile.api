@@ -1,4 +1,7 @@
 FROM node:20-alpine AS base
+# git is needed by pnpm install when any dep resolves from a git URL
+# (currently @whiskeysockets/baileys → libsignal-node).
+RUN apk add --no-cache git
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
