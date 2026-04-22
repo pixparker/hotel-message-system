@@ -109,3 +109,21 @@
     box-shadow: 0 0 0 1px rgb(var(--brand-600) / 0.12);
   }
 }
+
+/* Toast slide-in/out. Defined as plain CSS (not Tailwind utilities) so the
+   keyframes are always in the compiled bundle regardless of JIT scanning.
+   Must stay in sync with EXIT_ANIMATION_MS in components/toast.tsx. */
+@keyframes hms-toast-in {
+  from { opacity: 0; transform: translateX(110%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes hms-toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(110%); }
+}
+.hms-toast[data-state="open"] {
+  animation: hms-toast-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hms-toast[data-state="closed"] {
+  animation: hms-toast-out 220ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}

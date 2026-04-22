@@ -11,6 +11,7 @@ import {
   templates,
   organizations,
   settings,
+  waInboundTouches,
 } from "@hms/db";
 import {
   campaignCreateSchema,
@@ -24,7 +25,10 @@ import { sendMessageQueue } from "../redis.js";
 import { rateLimit } from "../rate-limit.js";
 import { auditLog, auditContext } from "../audit.js";
 
-// Per-org limiter: prevents one tenant from flooding the queue at the expense of others.
+// Per-org limiter: prevents one tenant from flooding the queue with campaign
+// creations / test sends. Applied ONLY to write endpoints — read endpoints
+// (live-status polling, campaign detail) are safe to hit freely. With this
+// mounted chain-wide we'd trip the cap in ~40s of 1.5s polling.
 const campaignLimiter = rateLimit({
   windowSec: 60,
   max: 30,
@@ -136,7 +140,6 @@ export const campaignRoutes = new Hono()
   .use(requireAuth)
   .use(withTenant)
   .use(requireVerified)
-  .use(campaignLimiter)
   .get("/", async (c) => {
     const db = c.var.db;
     const orgId = currentOrgId(c);
@@ -212,21 +215,34 @@ export const campaignRoutes = new Hono()
 
     // Known-good numbers: either have messaged us (wa_inbound_touches) or
     // we've successfully sent to them at least once (messages with providerMessageId).
-    const inboundRows = (await db.execute(
-      sql`SELECT from_e164 FROM wa_inbound_touches
-           WHERE org_id = ${orgId} AND from_e164 = ANY(${phones})`,
-    )) as unknown as Array<{ from_e164: string }>;
-    const priorOutRows = (await db.execute(
-      sql`SELECT DISTINCT phone_e164 FROM messages
-           WHERE org_id = ${orgId}
-             AND phone_e164 = ANY(${phones})
-             AND provider_message_id IS NOT NULL
-             AND status IN ('sent','delivered','read')`,
-    )) as unknown as Array<{ phone_e164: string }>;
+    // Use Drizzle's typed `inArray` so postgres-js serializes the JS array
+    // into a proper SQL parameter — raw `ANY(${phones})` would be misparsed.
+    const [inboundRows, priorOutRows] = await Promise.all([
+      db
+        .select({ phone: waInboundTouches.fromE164 })
+        .from(waInboundTouches)
+        .where(
+          and(
+            eq(waInboundTouches.orgId, orgId),
+            inArray(waInboundTouches.fromE164, phones),
+          ),
+        ),
+      db
+        .selectDistinct({ phone: messages.phoneE164 })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.orgId, orgId),
+            inArray(messages.phoneE164, phones),
+            sql`${messages.providerMessageId} IS NOT NULL`,
+            inArray(messages.status, ["sent", "delivered", "read"] as const),
+          ),
+        ),
+    ]);
 
     const safeSet = new Set<string>([
-      ...inboundRows.map((r) => r.from_e164),
-      ...priorOutRows.map((r) => r.phone_e164),
+      ...inboundRows.map((r) => r.phone),
+      ...priorOutRows.map((r) => r.phone),
     ]);
 
     const riskyContactIds: string[] = [];
@@ -262,7 +278,7 @@ export const campaignRoutes = new Hono()
     ]);
     return c.json({ ...campaign, messages: msgRows, audiences: audienceRows });
   })
-  .post("/", async (c) => {
+  .post("/", campaignLimiter, async (c) => {
     const db = c.var.db;
     const auth = c.get("auth");
     const orgId = currentOrgId(c);
@@ -333,6 +349,16 @@ export const campaignRoutes = new Hono()
       );
     }
 
+    // Bump lastUsedAt so the Send wizard's template picker surfaces
+    // recently-used templates first. Test sends go through a separate
+    // endpoint and intentionally do not update this timestamp.
+    if (body.templateId) {
+      await db
+        .update(templates)
+        .set({ lastUsedAt: new Date() })
+        .where(and(eq(templates.id, body.templateId), eq(templates.orgId, orgId)));
+    }
+
     const messageRows = await db
       .insert(messages)
       .values(
@@ -378,7 +404,7 @@ export const campaignRoutes = new Hono()
 
     return c.json(campaign, 201);
   })
-  .post("/test", async (c) => {
+  .post("/test", campaignLimiter, async (c) => {
     const db = c.var.db;
     const auth = c.get("auth");
     const orgId = currentOrgId(c);

@@ -64,11 +64,13 @@ export function AudiencesPage() {
                 )}
               </div>
 
-              {a.description && (
-                <p className="text-sm text-slate-600 line-clamp-2">
-                  {a.description}
-                </p>
-              )}
+              <div className="min-h-[2.5rem]">
+                {a.description && (
+                  <p className="text-sm text-slate-600 line-clamp-2">
+                    {a.description}
+                  </p>
+                )}
+              </div>
 
               <div className="flex items-end justify-between pt-2">
                 <div>
@@ -88,7 +90,7 @@ export function AudiencesPage() {
                 </Link>
               </div>
 
-              <div className="mt-2 flex items-center gap-1 border-t border-slate-100 pt-3">
+              <div className="mt-auto flex items-center gap-1 border-t border-slate-100 pt-3">
                 <Link
                   to={`/send?audience=${a.id}`}
                   className="btn-ghost flex-1 justify-center text-brand-700 hover:bg-brand-50"

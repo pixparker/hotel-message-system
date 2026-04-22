@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { templates, templateBodies } from "@hms/db";
 import { templateCreateSchema } from "@hms/shared";
 import { requireAuth, currentOrgId } from "../auth.js";
@@ -14,7 +14,7 @@ export const templateRoutes = new Hono()
     const rows = await db.query.templates.findMany({
       where: eq(templates.orgId, orgId),
       with: { bodies: true },
-      orderBy: desc(templates.createdAt),
+      orderBy: sql`COALESCE(${templates.lastUsedAt}, ${templates.createdAt}) DESC`,
     });
     return c.json(rows);
   })

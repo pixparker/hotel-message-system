@@ -40,6 +40,7 @@ interface Template {
   name: string;
   description: string | null;
   createdAt: string;
+  lastUsedAt: string | null;
   bodies: TemplateBody[];
 }
 interface Campaign {
@@ -212,6 +213,7 @@ function seed(): State {
       name: "Welcome to the hotel",
       description: "Sent on check-in.",
       createdAt: hoursAgo(48),
+      lastUsedAt: null,
       bodies: [
         {
           templateId: welcomeId,
@@ -236,6 +238,7 @@ function seed(): State {
       name: "Breakfast reminder",
       description: "Morning reminder for the restaurant hours.",
       createdAt: hoursAgo(36),
+      lastUsedAt: null,
       bodies: [
         {
           templateId: breakfastId,
@@ -589,9 +592,11 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
   if (path.startsWith("/api/templates")) {
     const id = path.match(/^\/api\/templates\/([^\/]+)/)?.[1];
     if (method === "GET" && !id) {
-      const rows = [...state.templates].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+      const rows = [...state.templates].sort((a, b) => {
+        const aKey = new Date(a.lastUsedAt ?? a.createdAt).getTime();
+        const bKey = new Date(b.lastUsedAt ?? b.createdAt).getTime();
+        return bKey - aKey;
+      });
       return json(rows);
     }
     if (method === "GET" && id) {
@@ -606,6 +611,7 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
         name: String(body.name),
         description: (body.description as string | undefined) ?? null,
         createdAt: new Date().toISOString(),
+        lastUsedAt: null,
         bodies: (body.bodies as Array<{ language: string; body: string }>).map((b) => ({
           templateId: "pending",
           language: b.language,
@@ -753,6 +759,10 @@ export async function demoFetch(path: string, init: RequestInit = {}): Promise<R
         finishedAt: null,
       };
       state.campaigns.unshift(campaign);
+      if (templateId) {
+        const tpl = state.templates.find((t) => t.id === templateId);
+        if (tpl) tpl.lastUsedAt = new Date().toISOString();
+      }
       for (const g of recipients) {
         const picked = pickBody(bodies, g.language);
         state.messages.push({

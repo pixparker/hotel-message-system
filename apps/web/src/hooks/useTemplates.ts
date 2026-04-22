@@ -5,6 +5,8 @@ export interface Template {
   id: string;
   name: string;
   description: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
   bodies: Array<{ language: string; body: string }>;
 }
 
