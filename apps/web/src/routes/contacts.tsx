@@ -1,6 +1,15 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { UserPlus, Search, BedDouble, Upload, Users, LogOut } from "lucide-react";
+import {
+  UserPlus,
+  Search,
+  BedDouble,
+  Upload,
+  Users,
+  LogOut,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Page } from "../components/Page.js";
 import { EmptyState } from "../components/EmptyState.js";
@@ -22,6 +31,8 @@ import { AudienceChip } from "../components/AudienceChip.js";
 import { TagChip } from "../components/TagChip.js";
 import { CsvImportDialog } from "../components/CsvImportDialog.js";
 import { CheckoutDialog } from "../components/CheckoutDialog.js";
+import { EditContactDialog } from "../components/EditContactDialog.js";
+import { DeleteContactDialog } from "../components/DeleteContactDialog.js";
 import { cn } from "../lib/cn.js";
 
 const SOURCE_OPTIONS: Array<{ value: ContactSource | "all"; label: string }> = [
@@ -39,6 +50,8 @@ export function ContactsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [checkoutContact, setCheckoutContact] = useState<Contact | null>(null);
+  const [editContact, setEditContact] = useState<Contact | null>(null);
+  const [deleteContact, setDeleteContact] = useState<Contact | null>(null);
 
   const qc = useQueryClient();
   const { data: contacts = [], isLoading } = useContacts();
@@ -205,7 +218,7 @@ export function ContactsPage() {
       ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-sm">
+            <table className="w-full min-w-[960px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Name</th>
@@ -215,7 +228,7 @@ export function ContactsPage() {
                   <th className="px-4 py-3">Source</th>
                   <th className="px-4 py-3">Audiences</th>
                   <th className="px-4 py-3">Tags</th>
-                  {showHotelColumns && <th className="px-4 py-3"></th>}
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -227,6 +240,8 @@ export function ContactsPage() {
                     tags={tags}
                     showHotelColumns={showHotelColumns}
                     onCheckoutRequest={() => setCheckoutContact(c)}
+                    onEditRequest={() => setEditContact(c)}
+                    onDeleteRequest={() => setDeleteContact(c)}
                   />
                 ))}
               </tbody>
@@ -255,6 +270,16 @@ export function ContactsPage() {
         open={!!checkoutContact}
         onOpenChange={(o) => !o && setCheckoutContact(null)}
       />
+      <EditContactDialog
+        contact={editContact}
+        open={!!editContact}
+        onOpenChange={(o) => !o && setEditContact(null)}
+      />
+      <DeleteContactDialog
+        contact={deleteContact}
+        open={!!deleteContact}
+        onOpenChange={(o) => !o && setDeleteContact(null)}
+      />
     </Page>
   );
 }
@@ -265,6 +290,8 @@ function ContactRow({
   tags,
   showHotelColumns,
   onCheckoutRequest,
+  onEditRequest,
+  onDeleteRequest,
 }: {
   contact: Contact;
   audiences: ReturnType<typeof useAudiences>["data"] extends infer T
@@ -279,6 +306,8 @@ function ContactRow({
     : never;
   showHotelColumns: boolean;
   onCheckoutRequest: () => void;
+  onEditRequest: () => void;
+  onDeleteRequest: () => void;
 }) {
   const audById = new Map(audiences.map((a) => [a.id, a]));
   const tagById = new Map(tags.map((t) => [t.id, t]));
@@ -293,8 +322,10 @@ function ContactRow({
     .map((id) => tagById.get(id))
     .filter((t): t is NonNullable<typeof t> => Boolean(t));
 
+  // Hotel guests can be checked out from anywhere in the list, not only when
+  // the list is pre-filtered to the Hotel Guests audience.
   const canCheckOut =
-    showHotelColumns && contact.status === "checked_in";
+    contact.source === "hotel" && contact.status === "checked_in";
 
   return (
     <tr
@@ -361,19 +392,38 @@ function ContactRow({
           )}
         </div>
       </td>
-      {showHotelColumns && (
-        <td className="px-4 py-3 text-right">
+      <td className="px-4 py-3 text-right">
+        <div className="flex items-center justify-end gap-1">
           {canCheckOut && (
             <button
               className="btn-ghost text-rose-600 hover:bg-rose-50"
               onClick={onCheckoutRequest}
+              title="Check out"
             >
               <LogOut className="h-4 w-4" />
               Check out
             </button>
           )}
-        </td>
-      )}
+          <button
+            className="btn-ghost text-slate-600 hover:bg-slate-100"
+            onClick={onEditRequest}
+            title="Edit contact"
+            aria-label="Edit contact"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          {contact.isActive && (
+            <button
+              className="btn-ghost text-rose-600 hover:bg-rose-50"
+              onClick={onDeleteRequest}
+              title="Remove contact"
+              aria-label="Remove contact"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </td>
     </tr>
   );
 }

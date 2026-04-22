@@ -164,7 +164,7 @@ export function Step4Test() {
           className="btn-secondary"
           onClick={() => {
             patch({ step: 3 });
-            navigate("/send/recipients");
+            navigate("/send/languages");
           }}
         >
           <ArrowLeft className="h-4 w-4" /> Back

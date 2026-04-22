@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useWizard } from "../../state/wizard.js";
 import { useAudiences } from "../../hooks/useAudiences.js";
 import { useRecipientPreview } from "../../hooks/useRecipientPreview.js";
@@ -22,6 +22,12 @@ export function Step3Recipients() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
+
+  // Ensure the wizard step marker reflects this page (first step now).
+  useEffect(() => {
+    patch({ step: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const preview = useRecipientPreview(selectedAudienceIds);
   const total = preview.data?.total ?? 0;
@@ -49,22 +55,13 @@ export function Step3Recipients() {
         </div>
       </div>
 
-      <div className="flex justify-between">
-        <button
-          className="btn-secondary"
-          onClick={() => {
-            patch({ step: 2 });
-            navigate("/send/languages");
-          }}
-        >
-          <ArrowLeft className="h-4 w-4" /> Back
-        </button>
+      <div className="flex justify-end">
         <button
           className="btn-primary"
           disabled={selectedAudienceIds.length === 0 || total === 0}
           onClick={() => {
-            patch({ step: 4 });
-            navigate("/send/test");
+            patch({ step: 2 });
+            navigate("/send/message");
           }}
         >
           Continue

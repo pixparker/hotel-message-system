@@ -117,3 +117,40 @@ export function useUndoCheckOutContact() {
     },
   });
 }
+
+/**
+ * "Delete" a contact by flipping `isActive: false`. Preserves the row (and
+ * its historical messages + report data) while hiding the contact from the
+ * default list view.
+ */
+export function useDeleteContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<Contact>(`/api/contacts/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: false }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["audiences"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    },
+  });
+}
+
+export function useRestoreContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<Contact>(`/api/contacts/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: true }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["audiences"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    },
+  });
+}

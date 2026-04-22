@@ -35,8 +35,8 @@ export const useWizard = create<WizardState>()(
       reset: () => set(initial),
       patch: (p) => set(p),
     }),
-    // Bump the persisted key — the shape changed (recipientStatus →
-    // selectedAudienceIds) so old localStorage would crash on load.
-    { name: "hms-wizard-v2" },
+    // Bump when the step-order or shape changes so old localStorage doesn't
+    // land users on a step that now means something different.
+    { name: "hms-wizard-v3" },
   ),
 );
