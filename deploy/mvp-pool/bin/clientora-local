@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# clientora-local — runs `clientora` on the server over SSH.
+# Install on your laptop by symlinking to somewhere on $PATH:
+#   ln -sf $(pwd)/deploy/mvp-pool/bin/clientora-local ~/.local/bin/clientora
+#
+# Defaults come from env or ~/.config/clientora/config; override with flags.
+
+set -euo pipefail
+
+CONFIG_FILE="${CLIENTORA_CONFIG:-$HOME/.config/clientora/config}"
+if [[ -f "$CONFIG_FILE" ]]; then
+	# shellcheck disable=SC1090
+	. "$CONFIG_FILE"
+fi
+
+SSH_HOST="${CLIENTORA_HOST:-ali@ssh.clientora.net}"
+SSH_PORT="${CLIENTORA_PORT:-22}"
+SSH_OPTS="${CLIENTORA_SSH_OPTS:--o ServerAliveInterval=30}"
+
+# Allocate a TTY for interactive commands (psql, logs -f) — detect when.
+case "${1:-}" in
+	logs|infra:logs|db:psql) TTY_FLAG="-t" ;;
+	*) TTY_FLAG="" ;;
+esac
+
+# shellcheck disable=SC2086
+exec ssh $SSH_OPTS -p "$SSH_PORT" $TTY_FLAG "$SSH_HOST" -- clientora "$@"
