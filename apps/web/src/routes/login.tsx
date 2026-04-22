@@ -179,8 +179,8 @@ export function LoginPage() {
             </Link>
           </div>
         </form>
-        <div className="text-xs text-slate-400/90 select-all">
-          build {__APP_VERSION__}
+        <div className="text-xs text-slate-400/90 select-all tabular-nums">
+          {__APP_VERSION__}
         </div>
       </div>
     </div>

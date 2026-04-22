@@ -329,12 +329,16 @@ cmd_deploy() {
 		git reset --hard "origin/$BRANCH"
 	)
 
-	local sha; sha=$(cd "$app_dir/repo" && git rev-parse --short HEAD)
-	log "$name: building images at $sha"
+	local sha date semver version
+	sha=$(cd "$app_dir/repo" && git rev-parse --short HEAD)
+	date=$(cd "$app_dir/repo" && git log -1 --format=%cs HEAD)
+	semver=$(jq -r '.version // "0.0.0"' "$app_dir/repo/package.json" 2>/dev/null || echo 0.0.0)
+	version="v${semver} · ${sha} · ${date}"
+	log "$name: building images at $version"
 	# Full rebuild: guarantees APP_VERSION is re-baked into the web bundle
 	# every deploy. Cache mounts (e.g. pnpm store) still persist, so pnpm
 	# install doesn't re-download packages.
-	APP_VERSION="$sha" compose_mvp "$name" build --pull --no-cache
+	APP_VERSION="$version" compose_mvp "$name" build --pull --no-cache
 
 	log "$name: running DB migrations"
 	cmd_migrate "$name"
