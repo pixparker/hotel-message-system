@@ -17,7 +17,7 @@ export interface ReportsStats {
     avgMs: number;
     medianMs: number;
   };
-  dailySent: Array<{ day: string; count: number }>;
+  dailySent: Array<{ day: string; count: number; campaigns: number }>;
   readBuckets: Partial<Record<"lt5m" | "lt30m" | "lt1h" | "lt3h" | "gt3h", number>>;
   topCampaign: {
     id: string;
@@ -40,8 +40,16 @@ export interface ReportsStats {
 }
 
 export function useReportsStats() {
+  // Pass the browser's IANA timezone so server-side day buckets line up with
+  // the user's local calendar — otherwise midnight-local sends in positive
+  // UTC offsets get grouped into the previous UTC day on the chart.
+  const tz =
+    typeof Intl !== "undefined"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : "UTC";
   return useQuery({
-    queryKey: ["reports-stats"],
-    queryFn: () => api<ReportsStats>("/api/stats/reports"),
+    queryKey: ["reports-stats", tz],
+    queryFn: () =>
+      api<ReportsStats>(`/api/stats/reports?tz=${encodeURIComponent(tz)}`),
   });
 }

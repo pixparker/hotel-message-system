@@ -382,72 +382,156 @@ function HeroStat({
 function DailyTrendCard({
   entries,
 }: {
-  entries: Array<{ day: string; count: number }>;
+  entries: Array<{ day: string; count: number; campaigns: number }>;
 }) {
-  const days: Array<{ day: string; count: number }> = [];
+  // Build the 14-slot skeleton using LOCAL date components (not toISOString,
+  // which would fold local midnight back to the previous UTC day for users
+  // east of GMT, breaking the match against backend buckets that are now
+  // grouped in the client's timezone).
+  const days: Array<{ day: string; count: number; campaigns: number }> = [];
   for (let i = 13; i >= 0; i--) {
     const d = new Date();
-    d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
+    const key = localDateKey(d);
     const hit = entries.find((e) => e.day.startsWith(key));
-    days.push({ day: key, count: hit?.count ?? 0 });
+    days.push({
+      day: key,
+      count: hit?.count ?? 0,
+      campaigns: hit?.campaigns ?? 0,
+    });
   }
   const max = Math.max(1, ...days.map((d) => d.count));
   const total = days.reduce((a, d) => a + d.count, 0);
   const activeDays = days.filter((d) => d.count > 0).length;
+  // Best day for the footer insight — picks the most recent if multiple tie,
+  // which matches what "best" feels like on a rolling window.
+  const bestDay = [...days]
+    .reverse()
+    .find((d) => d.count === max && d.count > 0);
 
   return (
     <div className="card p-5 lg:col-span-2">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <TrendingUp className="h-4 w-4 text-brand-600" />
           Last 14 days
         </div>
-        <div className="text-xs text-slate-400">
-          {total.toLocaleString()} messages · {activeDays} active days
+        <div className="text-xs text-slate-500 tabular-nums">
+          {total.toLocaleString()} messages · {activeDays} active day
+          {activeDays === 1 ? "" : "s"}
         </div>
       </div>
       {total === 0 ? (
-        <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 text-sm text-slate-500">
-          No messages sent in the last 14 days yet.
+        <div className="flex h-32 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-200 bg-slate-50/50 text-center">
+          <div className="text-sm font-medium text-slate-600">
+            No campaign activity yet
+          </div>
+          <div className="text-xs text-slate-400">
+            Completed campaigns in the last 14 days will show up here.
+          </div>
         </div>
       ) : (
-        <div className="flex items-end gap-1 h-28 border-b border-slate-200">
-          {days.map((d) => (
-            <div
-              key={d.day}
-              className="group relative flex-1 flex flex-col items-center justify-end"
-              title={`${d.day}: ${d.count}`}
-            >
-              {d.count > 0 && (
-                <>
-                  <span className="pointer-events-none absolute -top-5 text-[10px] font-medium tabular-nums text-slate-500 opacity-0 transition-opacity group-hover:opacity-100">
-                    {d.count}
-                  </span>
-                  <div
-                    className="w-full rounded-t bg-gradient-to-t from-brand-600 to-brand-400 hover:from-brand-700 hover:to-brand-500 transition-colors shadow-[0_1px_0_rgba(255,255,255,0.3)_inset]"
-                    style={{ height: `${(d.count / max) * 100}%` }}
-                  />
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="mt-2 flex gap-1 text-[10px] text-slate-400 tabular-nums">
-        {days.map((d, i) => (
-          <div key={d.day} className="flex-1 text-center">
-            {i === 0
-              ? d.day.slice(5)
-              : i === days.length - 1
-                ? "today"
-                : ""}
+        <>
+          {/* items-stretch (default) so each day slot fills the full card
+              height — percentage-height bars compute against that, which
+              they can't do inside items-end (slots would collapse to
+              their bar's intrinsic height). */}
+          <div className="flex gap-1 h-28 border-b border-slate-200">
+            {days.map((d) => (
+              <DayBar key={d.day} day={d} max={max} />
+            ))}
           </div>
-        ))}
-      </div>
+          <div className="mt-2 flex gap-1 text-[10px] text-slate-400 tabular-nums">
+            {days.map((d, i) => (
+              <div key={d.day} className="flex-1 text-center">
+                {i === 0
+                  ? formatDayShort(d.day)
+                  : i === days.length - 1
+                    ? "today"
+                    : ""}
+              </div>
+            ))}
+          </div>
+          {bestDay && bestDay.count > 0 && activeDays > 1 && (
+            <div className="mt-3 text-xs text-slate-500">
+              <span className="font-medium text-slate-700">Best day:</span>{" "}
+              {formatDayLong(bestDay.day)} — {bestDay.count.toLocaleString()}{" "}
+              message{bestDay.count === 1 ? "" : "s"}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
+}
+
+function DayBar({
+  day,
+  max,
+}: {
+  day: { day: string; count: number; campaigns: number };
+  max: number;
+}) {
+  const hasData = day.count > 0;
+  return (
+    <div className="group relative flex-1 flex flex-col items-center justify-end">
+      {/* Tooltip */}
+      <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[11px] text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+        <div className="font-medium">{formatDayLong(day.day)}</div>
+        <div className="text-slate-300 tabular-nums">
+          {day.count.toLocaleString()} message{day.count === 1 ? "" : "s"}
+          {hasData &&
+            ` · ${day.campaigns} campaign${day.campaigns === 1 ? "" : "s"}`}
+        </div>
+      </div>
+      {hasData ? (
+        <div
+          className="w-full rounded-t bg-gradient-to-t from-brand-600 to-brand-400 transition group-hover:from-brand-700 group-hover:to-brand-500 shadow-[0_1px_0_rgba(255,255,255,0.3)_inset]"
+          style={{ height: `${(day.count / max) * 100}%` }}
+        />
+      ) : (
+        // Zero-activity days remain present in the timeline as a thin axis tick
+        <div className="w-full h-0.5 rounded-full bg-slate-200 group-hover:bg-slate-300" />
+      )}
+    </div>
+  );
+}
+
+function localDateKey(d: Date) {
+  // "YYYY-MM-DD" in the LOCAL timezone, matching how the backend now buckets.
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDayShort(iso: string) {
+  // "2026-04-23" → "Apr 23"
+  const [, month, day] = iso.split("-").map(Number);
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  return `${months[(month ?? 1) - 1]} ${day}`;
+}
+
+function formatDayLong(iso: string) {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function ReadBucketsCard({

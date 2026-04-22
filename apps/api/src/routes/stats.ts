@@ -183,6 +183,13 @@ export const statsRoutes = new Hono()
     const db = c.var.db;
     const orgId = currentOrgId(c);
     const since30d = new Date(Date.now() - 30 * DAY);
+    // Client-supplied IANA timezone so daily buckets align with the user's
+    // local calendar (otherwise midnight-local sends fall into the previous
+    // UTC day). Validate strictly to keep this out of the raw SQL we build
+    // below — Postgres will happily reject it as invalid at runtime, but
+    // defense in depth.
+    const rawTz = c.req.query("tz") ?? "UTC";
+    const tz = /^[A-Za-z_][A-Za-z0-9_+\-/]*$/.test(rawTz) ? rawTz : "UTC";
 
     const [allTime] = await db
       .select({
@@ -213,10 +220,20 @@ export const statsRoutes = new Hono()
       .innerJoin(campaigns, eq(messages.campaignId, campaigns.id))
       .where(and(eq(campaigns.orgId, orgId), eq(campaigns.isTest, false)));
 
+    // Per-day activity: count messages that actually reached the recipient
+    // (sent/delivered/read — drops queued and failed). Also report the
+    // distinct campaign count per day so the UI tooltip can show
+    // "N messages · M campaigns". Grouped in the client's timezone so
+    // a message sent at local 12:05 AM counts toward that local day, not
+    // the previous UTC day. The tz is baked as a SQL literal (safe because
+    // it's regex-validated above) — parameterizing it breaks when the same
+    // fragment is reused across select / groupBy / orderBy.
+    const bucket = sql`date_trunc('day', ${messages.sentAt} AT TIME ZONE ${sql.raw(`'${tz}'`)})`;
     const dailySent = await db
       .select({
-        day: sql<string>`date_trunc('day', ${messages.sentAt})::date::text`,
+        day: sql<string>`${bucket}::date::text`,
         count: sql<number>`count(*)::int`,
+        campaigns: sql<number>`count(distinct ${messages.campaignId})::int`,
       })
       .from(messages)
       .innerJoin(campaigns, eq(messages.campaignId, campaigns.id))
@@ -225,10 +242,11 @@ export const statsRoutes = new Hono()
           eq(campaigns.orgId, orgId),
           eq(campaigns.isTest, false),
           gte(messages.sentAt, since30d),
+          sql`${messages.status} in ('sent', 'delivered', 'read')`,
         ),
       )
-      .groupBy(sql`date_trunc('day', ${messages.sentAt})`)
-      .orderBy(sql`date_trunc('day', ${messages.sentAt})`);
+      .groupBy(bucket)
+      .orderBy(bucket);
 
     const readBuckets = await db
       .select({
@@ -314,7 +332,11 @@ export const statsRoutes = new Hono()
         avgMs: Number(readTiming?.avgMs ?? 0),
         medianMs: Number(readTiming?.medianMs ?? 0),
       },
-      dailySent: dailySent.map((d) => ({ day: d.day, count: Number(d.count) })),
+      dailySent: dailySent.map((d) => ({
+        day: d.day,
+        count: Number(d.count),
+        campaigns: Number(d.campaigns),
+      })),
       readBuckets: Object.fromEntries(
         readBuckets.map((b) => [b.bucket, Number(b.count)]),
       ) as Record<string, number>,
