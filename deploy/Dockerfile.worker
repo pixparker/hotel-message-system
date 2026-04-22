@@ -22,7 +22,8 @@ RUN addgroup -S hms && adduser -S hms -G hms
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages ./packages
-COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+COPY --from=build /app/apps/worker/src ./apps/worker/src
+COPY --from=build /app/apps/worker/tsconfig.json /app/apps/worker/tsconfig.build.json ./apps/worker/
 COPY --from=build /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=build /app/apps/worker/package.json ./apps/worker/
 USER hms
