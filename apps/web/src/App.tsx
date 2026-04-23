@@ -16,7 +16,10 @@ import { SendWizardPage } from "./routes/send/index.js";
 import { LivePage } from "./routes/live.js";
 import { ReportsPage } from "./routes/reports.js";
 import { CampaignDetailPage } from "./routes/campaign-detail.js";
-import { SettingsPage } from "./routes/settings.js";
+import { SettingsLayout } from "./routes/settings/layout.js";
+import { GeneralSettingsPanel } from "./routes/settings/general.js";
+import { WhatsAppSettingsPanel } from "./routes/settings/whatsapp.js";
+import { BrandingSettingsPanel } from "./routes/settings/branding.js";
 import { WhatsAppConnectPage } from "./routes/whatsapp-connect.js";
 import { WhatsAppBaileysPage } from "./routes/whatsapp-baileys.js";
 import { TemplatesPage } from "./routes/templates.js";
@@ -59,9 +62,17 @@ export function App() {
             <Route path="/campaigns/:id/live" element={<LivePage />} />
             <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
             <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/settings/whatsapp" element={<WhatsAppConnectPage />} />
-            <Route path="/settings/whatsapp-baileys" element={<WhatsAppBaileysPage />} />
+            <Route path="/settings" element={<SettingsLayout />}>
+              <Route index element={<Navigate to="general" replace />} />
+              <Route path="general" element={<GeneralSettingsPanel />} />
+              <Route path="whatsapp" element={<WhatsAppSettingsPanel />} />
+              <Route path="branding" element={<BrandingSettingsPanel />} />
+            </Route>
+            {/* Wizards stay outside the tabbed layout (full-screen flows). */}
+            <Route path="/settings/whatsapp/connect" element={<WhatsAppConnectPage />} />
+            <Route path="/settings/whatsapp/baileys" element={<WhatsAppBaileysPage />} />
+            {/* Back-compat for old bookmarks. */}
+            <Route path="/settings/whatsapp-baileys" element={<Navigate to="/settings/whatsapp/baileys" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

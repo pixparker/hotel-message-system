@@ -40,7 +40,7 @@ export function WhatsAppConnectPage() {
         title: "WhatsApp connected",
         description: "Test message sent. Credentials saved (encrypted).",
       });
-      navigate("/settings");
+      navigate("/settings/whatsapp");
     } catch (err) {
       const detail =
         err instanceof ApiError && (err.body as { detail?: string })?.detail
@@ -63,7 +63,7 @@ export function WhatsAppConnectPage() {
     >
       <div className="max-w-2xl mx-auto space-y-6">
         <Link
-          to="/settings"
+          to="/settings/whatsapp"
           className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
         >
           <ArrowLeft className="h-4 w-4" /> Back to settings
