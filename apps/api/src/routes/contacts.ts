@@ -265,11 +265,26 @@ export const contactRoutes = new Hono()
       await setTagMemberships(db, row.id, orgId, body.tagIds);
     }
 
+    // Hotel-source contacts are created already-checked-in. Treat that as a
+    // check-in event so the Check-In module's auto-message fires the same way
+    // it would if the staffer had toggled status from a separate UI later.
+    const autoMessage =
+      row.status === "checked_in"
+        ? await triggerAutoMessage({
+            db,
+            orgId,
+            contactId: row.id,
+            trigger: "check_in",
+            createdBy: c.get("auth").sub,
+          })
+        : undefined;
+
     return c.json(
       {
         ...row,
         audienceIds: body.audienceIds ?? [],
         tagIds: body.tagIds ?? [],
+        ...(autoMessage ? { autoMessage } : {}),
       },
       201,
     );

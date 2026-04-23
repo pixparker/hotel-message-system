@@ -63,7 +63,7 @@ export function useCreateContact() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: ContactCreateInput) =>
-      api<Contact>("/api/contacts", {
+      api<ContactWithAutoMessage>("/api/contacts", {
         method: "POST",
         body: JSON.stringify(input),
       }),

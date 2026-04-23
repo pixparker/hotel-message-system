@@ -5,54 +5,11 @@ import { formatPhoneDisplay, LANGUAGE_LABELS } from "@hms/shared";
 import {
   useCheckOutContact,
   useUndoCheckOutContact,
-  type AutoMessageResult,
   type Contact,
 } from "../hooks/useContacts.js";
 import { LANGUAGE_FLAGS } from "./LanguagePicker.js";
 import { useToast } from "./toast.js";
-
-/**
- * Surface the Check-In module's auto-message outcome as a follow-up toast.
- * Silent when the module is off or no template is configured (the user
- * intentionally hasn't asked for an auto-send), loud on actual failures.
- */
-function autoMessageToast(
-  result: AutoMessageResult | undefined,
-  guestName: string,
-):
-  | { variant: "success" | "error"; title: string; description?: string }
-  | null {
-  if (!result) return null;
-  if (result.triggered) {
-    return {
-      variant: "success",
-      title: `Auto message sent to ${guestName}`,
-      description: `Template: ${result.templateName}`,
-    };
-  }
-  if (result.reason === "send_failed") {
-    return {
-      variant: "error",
-      title: "Auto message failed to send",
-      description: "Check the WhatsApp connection and template content.",
-    };
-  }
-  if (result.reason === "no_phone") {
-    return {
-      variant: "error",
-      title: "Auto message skipped",
-      description: `${guestName} has no phone number on file.`,
-    };
-  }
-  if (result.reason === "template_missing") {
-    return {
-      variant: "error",
-      title: "Auto message skipped",
-      description: "The configured template no longer exists.",
-    };
-  }
-  return null;
-}
+import { autoMessageToast } from "../lib/auto-message-toast.js";
 
 export function CheckoutDialog({
   guest,

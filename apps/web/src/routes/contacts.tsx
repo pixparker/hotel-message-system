@@ -26,6 +26,7 @@ import { useAudiences } from "../hooks/useAudiences.js";
 import { useTags } from "../hooks/useTags.js";
 import { useToast } from "../components/toast.js";
 import { ApiError } from "../lib/api.js";
+import { autoMessageToast } from "../lib/auto-message-toast.js";
 import { SourceBadge } from "../components/SourceBadge.js";
 import { AudienceChip } from "../components/AudienceChip.js";
 import { TagChip } from "../components/TagChip.js";
@@ -485,7 +486,7 @@ function AddContactDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await create.mutateAsync({
+      const result = await create.mutateAsync({
         name,
         phone,
         language,
@@ -496,6 +497,8 @@ function AddContactDialog({
         source: isHotelSelected ? "hotel" : "manual",
       });
       push({ variant: "success", title: `${name} added` });
+      const followUp = autoMessageToast(result.autoMessage, name);
+      if (followUp) push(followUp);
       reset();
       onOpenChange(false);
     } catch (err) {
