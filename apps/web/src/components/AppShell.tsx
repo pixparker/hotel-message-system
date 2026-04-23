@@ -13,6 +13,7 @@ import {
   X,
   ChevronsLeft,
   ChevronsRight,
+  Blocks,
 } from "lucide-react";
 import { useAuth } from "../state/auth.js";
 import { cn } from "../lib/cn.js";
@@ -25,6 +26,7 @@ const nav = [
   { to: "/audiences", label: "Audiences", icon: ListFilter },
   { to: "/templates", label: "Templates", icon: FileText },
   { to: "/reports", label: "Reports", icon: BarChart3 },
+  { to: "/modules", label: "Modules", icon: Blocks },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

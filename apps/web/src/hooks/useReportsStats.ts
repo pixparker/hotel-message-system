@@ -29,6 +29,7 @@ export interface ReportsStats {
   campaigns: Array<{
     id: string;
     title: string;
+    origin: CampaignOrigin;
     createdAt: string;
     status: string;
     queued: number;
@@ -38,6 +39,8 @@ export interface ReportsStats {
     failed: number;
   }>;
 }
+
+export type CampaignOrigin = "manual" | "auto_check_in" | "auto_check_out";
 
 export function useReportsStats() {
   // Pass the browser's IANA timezone so server-side day buckets line up with

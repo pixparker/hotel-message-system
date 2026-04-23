@@ -129,11 +129,27 @@ export const waConfigSchema = z
 
 export type WaConfig = z.infer<typeof waConfigSchema>;
 
+/**
+ * Per-module config blocks. Each module owns one key. The shape stays open
+ * so a future module (or a future Check-In knob like a delay) can be added
+ * without an API contract bump.
+ */
+export const checkInModuleConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  checkInTemplateId: z.string().uuid().nullable().optional(),
+  checkOutTemplateId: z.string().uuid().nullable().optional(),
+});
+
+export const modulesSchema = z.object({
+  checkIn: checkInModuleConfigSchema.optional(),
+});
+
 export const settingsUpdateSchema = z.object({
   waProvider: z.enum(["mock", "cloud", "baileys"]).optional(),
   waConfig: waConfigSchema.optional(),
   defaultTestPhone: phoneSchema.optional(),
   brandPrimaryColor: hexColorSchema.nullable().optional(),
+  modules: modulesSchema.optional(),
 });
 
 export const userUpdateSchema = z.object({
@@ -209,6 +225,8 @@ export type TemplateCreateInput = z.infer<typeof templateCreateSchema>;
 export type CampaignCreateInput = z.infer<typeof campaignCreateSchema>;
 export type TestMessageInput = z.infer<typeof testMessageSchema>;
 export type SettingsUpdateInput = z.infer<typeof settingsUpdateSchema>;
+export type ModulesConfig = z.infer<typeof modulesSchema>;
+export type CheckInModuleConfig = z.infer<typeof checkInModuleConfigSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;

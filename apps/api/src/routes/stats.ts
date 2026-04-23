@@ -122,6 +122,7 @@ export const statsRoutes = new Hono()
       .select({
         id: campaigns.id,
         title: campaigns.title,
+        origin: campaigns.origin,
         createdAt: campaigns.createdAt,
         status: campaigns.status,
         queued: campaigns.totalsQueued,
@@ -296,6 +297,7 @@ export const statsRoutes = new Hono()
       .select({
         id: campaigns.id,
         title: campaigns.title,
+        origin: campaigns.origin,
         createdAt: campaigns.createdAt,
         status: campaigns.status,
         queued: campaigns.totalsQueued,

@@ -63,7 +63,7 @@ export function useCreateContact() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: ContactCreateInput) =>
-      api<Contact>("/api/contacts", {
+      api<ContactWithAutoMessage>("/api/contacts", {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -94,11 +94,32 @@ export function useUpdateContact() {
   });
 }
 
+/**
+ * Outcome of the Check-In module's auto-message attempt, returned by the
+ * checkin/checkout endpoints so the UI can surface a follow-up toast.
+ */
+export type AutoMessageResult =
+  | { triggered: true; campaignId: string; templateName: string }
+  | {
+      triggered: false;
+      reason:
+        | "module_disabled"
+        | "auto_disabled"
+        | "no_template"
+        | "template_missing"
+        | "no_phone"
+        | "send_failed";
+    };
+
+export type ContactWithAutoMessage = Contact & { autoMessage?: AutoMessageResult };
+
 export function useCheckOutContact() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      api<Contact>(`/api/contacts/${id}/checkout`, { method: "POST" }),
+      api<ContactWithAutoMessage>(`/api/contacts/${id}/checkout`, {
+        method: "POST",
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contacts"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
@@ -110,7 +131,9 @@ export function useUndoCheckOutContact() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      api<Contact>(`/api/contacts/${id}/checkin`, { method: "POST" }),
+      api<ContactWithAutoMessage>(`/api/contacts/${id}/checkin`, {
+        method: "POST",
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contacts"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });

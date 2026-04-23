@@ -9,6 +9,7 @@ import {
 } from "../hooks/useContacts.js";
 import { LANGUAGE_FLAGS } from "./LanguagePicker.js";
 import { useToast } from "./toast.js";
+import { autoMessageToast } from "../lib/auto-message-toast.js";
 
 export function CheckoutDialog({
   guest,
@@ -28,7 +29,7 @@ export function CheckoutDialog({
     if (!guest) return;
     setSubmitting(true);
     try {
-      await checkout.mutateAsync(guest.id);
+      const result = await checkout.mutateAsync(guest.id);
       onOpenChange(false);
       push({
         variant: "success",
@@ -41,6 +42,8 @@ export function CheckoutDialog({
           onClick: () => undo.mutate(guest.id),
         },
       });
+      const followUp = autoMessageToast(result.autoMessage, guest.name);
+      if (followUp) push(followUp);
     } catch {
       push({ variant: "error", title: "Check-out failed" });
     } finally {
