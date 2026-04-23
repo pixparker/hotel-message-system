@@ -377,6 +377,32 @@ cmd_seed() {
 		sh -c 'for p in packages/db/node_modules/.bin/tsx node_modules/.bin/tsx; do [ -x "$p" ] && exec "$p" packages/db/src/seed.ts; done; echo "tsx not found in image" >&2; exit 1'
 }
 
+cmd_tenant_add() {
+	# clientora tenant:add <mvp> --org "NAME" --email X --password Y
+	# Creates a new isolated organization with one admin user in it.
+	local name="" org_name="" email="" password=""
+	while (($#)); do
+		case "$1" in
+			--org) org_name="$2"; shift 2 ;;
+			--email) email="$2"; shift 2 ;;
+			--password) password="$2"; shift 2 ;;
+			-*) die "unknown flag: $1" ;;
+			*) [[ -z "$name" ]] && name="$1" || die "unexpected arg: $1"; shift ;;
+		esac
+	done
+	[[ -n "$name"     ]] || die "usage: clientora tenant:add <mvp> --org NAME --email X --password Y"
+	[[ -n "$org_name" ]] || die "missing --org"
+	[[ -n "$email"    ]] || die "missing --email"
+	[[ -n "$password" ]] || die "missing --password"
+	load_mvp_meta "$name"
+	compose_mvp "$name" run --rm --no-deps --entrypoint "" \
+		-e NEW_ORG_NAME="$org_name" \
+		-e NEW_EMAIL="$email" \
+		-e NEW_PASSWORD="$password" \
+		"$API_SERVICE" \
+		sh -c 'for p in packages/db/node_modules/.bin/tsx node_modules/.bin/tsx; do [ -x "$p" ] && exec "$p" packages/db/src/new-tenant.ts; done; echo "tsx not found in image" >&2; exit 1'
+}
+
 cmd_logs() {
 	local name="${1:-}"; shift || true
 	[[ -n "$name" ]] || die "usage: clientora logs <name> [service]"
@@ -479,6 +505,8 @@ Deploy / runtime:
   deploy <name>                                    pull + build + migrate + seed + up + reload proxy
   migrate <name>                                   run DB migrations only
   seed <name>                                      run seed script (idempotent)
+  tenant:add <mvp> --org NAME --email X --password Y
+                                                   create a new isolated org + admin user
   logs <name> [service]
   ps <name>
   restart <name> [service]  |  stop <name>  |  start <name>
@@ -512,6 +540,7 @@ main() {
 		deploy)           cmd_deploy "$@" ;;
 		migrate)          cmd_migrate "$@" ;;
 		seed)             cmd_seed "$@" ;;
+		tenant:add)       cmd_tenant_add "$@" ;;
 		logs)             cmd_logs "$@" ;;
 		ps)               cmd_ps "$@" ;;
 		restart)          cmd_restart "$@" ;;
