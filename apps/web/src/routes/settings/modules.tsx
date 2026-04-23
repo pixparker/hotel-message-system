@@ -206,7 +206,7 @@ function CheckInModuleDialog({
   const { data: templates } = useTemplates();
 
   const initial: CheckInForm = {
-    enabled: !!settings?.modules?.checkIn?.enabled,
+    enabled: settings?.modules?.checkIn?.enabled ?? true,
     checkInTemplateId: settings?.modules?.checkIn?.checkInTemplateId ?? null,
     checkOutTemplateId: settings?.modules?.checkIn?.checkOutTemplateId ?? null,
   };
@@ -220,7 +220,7 @@ function CheckInModuleDialog({
   useEffect(() => {
     if (!open) return;
     setForm({
-      enabled: !!settings?.modules?.checkIn?.enabled,
+      enabled: settings?.modules?.checkIn?.enabled ?? true,
       checkInTemplateId: settings?.modules?.checkIn?.checkInTemplateId ?? null,
       checkOutTemplateId: settings?.modules?.checkIn?.checkOutTemplateId ?? null,
     });

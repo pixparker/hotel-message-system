@@ -22,7 +22,9 @@ function useEnabledModules(): Record<ModuleKey, boolean> {
     queryFn: () => api<SettingsResponse>("/api/settings"),
   });
   return {
-    check_in: !!data?.modules?.checkIn?.enabled,
+    // Default ON — mirrors the backend's default-on behavior for workspaces
+    // that haven't explicitly toggled the module.
+    check_in: data?.modules?.checkIn?.enabled ?? true,
   };
 }
 

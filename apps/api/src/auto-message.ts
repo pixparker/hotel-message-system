@@ -55,10 +55,14 @@ export async function triggerAutoMessage(opts: {
     .where(eq(settings.orgId, orgId));
   const modules: ModulesState = orgSettings?.modules ?? {};
   const checkIn = modules.checkIn;
-  if (!checkIn?.enabled) return { triggered: false, reason: "module_disabled" };
+  // Default ON for any workspace that hasn't explicitly turned the module off
+  // — keeps existing orgs (whose settings row predates this column) and
+  // freshly-signed-up orgs benefiting from automation without an opt-in step.
+  const enabled = checkIn?.enabled ?? true;
+  if (!enabled) return { triggered: false, reason: "module_disabled" };
 
   const templateId =
-    trigger === "check_in" ? checkIn.checkInTemplateId : checkIn.checkOutTemplateId;
+    trigger === "check_in" ? checkIn?.checkInTemplateId : checkIn?.checkOutTemplateId;
   if (!templateId) return { triggered: false, reason: "no_template" };
 
   const tpl = await db.query.templates.findFirst({
