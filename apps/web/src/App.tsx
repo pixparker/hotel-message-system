@@ -20,6 +20,8 @@ import { SettingsLayout } from "./routes/settings/layout.js";
 import { GeneralSettingsPanel } from "./routes/settings/general.js";
 import { WhatsAppSettingsPanel } from "./routes/settings/whatsapp.js";
 import { BrandingSettingsPanel } from "./routes/settings/branding.js";
+import { ModulesSettingsPanel } from "./routes/settings/modules.js";
+import { ModulesPage } from "./routes/modules.js";
 import { WhatsAppConnectPage } from "./routes/whatsapp-connect.js";
 import { WhatsAppBaileysPage } from "./routes/whatsapp-baileys.js";
 import { TemplatesPage } from "./routes/templates.js";
@@ -62,11 +64,13 @@ export function App() {
             <Route path="/campaigns/:id/live" element={<LivePage />} />
             <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
             <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/modules" element={<ModulesPage />} />
             <Route path="/settings" element={<SettingsLayout />}>
               <Route index element={<Navigate to="general" replace />} />
               <Route path="general" element={<GeneralSettingsPanel />} />
               <Route path="whatsapp" element={<WhatsAppSettingsPanel />} />
               <Route path="branding" element={<BrandingSettingsPanel />} />
+              <Route path="modules" element={<ModulesSettingsPanel />} />
             </Route>
             {/* Wizards stay outside the tabbed layout (full-screen flows). */}
             <Route path="/settings/whatsapp/connect" element={<WhatsAppConnectPage />} />

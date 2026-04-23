@@ -61,6 +61,13 @@ export const settingsRoutes = new Hono()
     if (body.defaultTestPhone) patch.defaultTestPhone = normalizePhone(body.defaultTestPhone);
     if (body.brandPrimaryColor !== undefined)
       patch.brandPrimaryColor = body.brandPrimaryColor ?? null;
+    if (body.modules) {
+      // Shallow-merge so a PATCH that only touches one module's keys does not
+      // wipe other modules' state. The JSONB column lives at the org level
+      // and accumulates one entry per shipped module.
+      const [current] = await db.select().from(settings).where(eq(settings.orgId, orgId));
+      patch.modules = { ...(current?.modules ?? {}), ...body.modules };
+    }
     const [row] = await db
       .update(settings)
       .set(patch)

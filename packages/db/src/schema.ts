@@ -36,6 +36,11 @@ export const campaignStatus = pgEnum("campaign_status", [
   "done",
   "cancelled",
 ]);
+export const campaignOrigin = pgEnum("campaign_origin", [
+  "manual",
+  "auto_check_in",
+  "auto_check_out",
+]);
 export const messageStatus = pgEnum("message_status", [
   "queued",
   "sent",
@@ -240,6 +245,7 @@ export const campaigns = pgTable(
       status?: "checked_in" | "checked_out";
     } | null>(),
     isTest: boolean("is_test").notNull().default(false),
+    origin: campaignOrigin("origin").notNull().default("manual"),
     status: campaignStatus("status").notNull().default("draft"),
     totalsQueued: integer("totals_queued").notNull().default(0),
     totalsSent: integer("totals_sent").notNull().default(0),
@@ -252,6 +258,7 @@ export const campaigns = pgTable(
   },
   (t) => ({
     orgCreatedIdx: index("campaigns_org_created_idx").on(t.orgId, t.createdAt),
+    orgOriginIdx: index("campaigns_org_origin_idx").on(t.orgId, t.origin),
   }),
 );
 
@@ -303,6 +310,19 @@ export const messages = pgTable(
   }),
 );
 
+/**
+ * Per-workspace state for opt-in modules. Each module owns one key in this
+ * map and is free to evolve its own shape. Today only `checkIn` is shipped
+ * (auto messages around check-in/check-out events).
+ */
+export type ModulesState = {
+  checkIn?: {
+    enabled?: boolean;
+    checkInTemplateId?: string | null;
+    checkOutTemplateId?: string | null;
+  };
+};
+
 export const settings = pgTable("settings", {
   orgId: uuid("org_id")
     .primaryKey()
@@ -311,6 +331,7 @@ export const settings = pgTable("settings", {
   waConfig: jsonb("wa_config").$type<Record<string, unknown>>().notNull().default({}),
   defaultTestPhone: text("default_test_phone"),
   brandPrimaryColor: text("brand_primary_color"),
+  modules: jsonb("modules").$type<ModulesState>().notNull().default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Page } from "../components/Page.js";
 import { EmptyState } from "../components/EmptyState.js";
-import { useReportsStats } from "../hooks/useReportsStats.js";
+import { useReportsStats, type CampaignOrigin } from "../hooks/useReportsStats.js";
 
 // Industry benchmarks used for value framing (public data, rounded).
 const BENCHMARK_EMAIL_OPEN = 22;
@@ -248,18 +248,21 @@ export function ReportsPage() {
               return (
                 <tr key={c.id} className="hover:bg-slate-50/60">
                   <td className="px-4 py-3 font-medium">
-                    <Link to={`/campaigns/${c.id}`} className="hover:text-brand-700">
-                      {c.title}
-                    </Link>
-                    {everyoneRead && (
-                      <span
-                        title="All recipients reached"
-                        aria-label="All recipients reached"
-                        className="ml-1.5 inline-flex align-middle text-emerald-600"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link to={`/campaigns/${c.id}`} className="hover:text-brand-700">
+                        {c.title}
+                      </Link>
+                      <OriginBadge origin={c.origin} />
+                      {everyoneRead && (
+                        <span
+                          title="All recipients reached"
+                          aria-label="All recipients reached"
+                          className="inline-flex align-middle text-emerald-600"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-slate-500">
                     {new Date(c.createdAt).toLocaleString()}
@@ -301,6 +304,17 @@ export function ReportsPage() {
         </div>
       </div>
     </Page>
+  );
+}
+
+function OriginBadge({ origin }: { origin: CampaignOrigin }) {
+  if (origin === "manual") return null;
+  const label =
+    origin === "auto_check_in" ? "Auto · Check-In" : "Auto · Check-Out";
+  return (
+    <span className="badge bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-100">
+      {label}
+    </span>
   );
 }
 

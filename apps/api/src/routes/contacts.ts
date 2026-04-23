@@ -18,6 +18,7 @@ import { requireAuth, currentOrgId } from "../auth.js";
 import { withTenant, type TenantDb } from "../tenant.js";
 import { rateLimit } from "../rate-limit.js";
 import { auditLog, auditContext } from "../audit.js";
+import { triggerAutoMessage } from "../auto-message.js";
 
 // Per-org import limiter — imports are expensive, keep them bounded.
 const importLimiter = rateLimit({
@@ -317,7 +318,14 @@ export const contactRoutes = new Hono()
       .where(and(eq(contacts.id, id), eq(contacts.orgId, orgId)))
       .returning();
     if (!row) return c.json({ error: "not_found" }, 404);
-    return c.json(row);
+    const autoMessage = await triggerAutoMessage({
+      db,
+      orgId,
+      contactId: id,
+      trigger: "check_out",
+      createdBy: c.get("auth").sub,
+    });
+    return c.json({ ...row, autoMessage });
   })
   .post("/:id/checkin", async (c) => {
     const db = c.var.db;
@@ -334,7 +342,14 @@ export const contactRoutes = new Hono()
       .where(and(eq(contacts.id, id), eq(contacts.orgId, orgId)))
       .returning();
     if (!row) return c.json({ error: "not_found" }, 404);
-    return c.json(row);
+    const autoMessage = await triggerAutoMessage({
+      db,
+      orgId,
+      contactId: id,
+      trigger: "check_in",
+      createdBy: c.get("auth").sub,
+    });
+    return c.json({ ...row, autoMessage });
   })
   /**
    * Dry-run preview of a CSV import. Returns parsed rows, invalid rows with
