@@ -1,12 +1,12 @@
 
 
-Deploy to MVP Pool
+Deploy to MVP Pool - done
 
 
-WhatApp Functional
+WhatApp Functional - done
 
 
-Demo User
+Demo User 
 
 
 Tenant Manager for Shared MVP Projects
